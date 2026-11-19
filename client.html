@@ -1,0 +1,38 @@
+<!doctype html><html lang="en" data-theme="light"><head><title>DevChat</title><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@500&display=swap"><link rel="stylesheet" href="styles.css"></head><body>
+<header class="wrap bar"><span class="mark">DevChat</span>
+  <div class="row-gap"><button class="btn ghost sm" id="themeBtn" type="button">Theme</button><button class="btn ghost sm" id="outBtn" type="button">Sign out</button></div></header>
+<main class="wrap client-main" id="root"><p class="muted">Loading</p></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script><script src="config.js"></script><script src="app.js"></script>
+<script>
+const { sb, $, pad, esc, initTheme, toast, requireSession, signOut } = DC;
+const theme = initTheme('client');
+$('#themeBtn').onclick = () => theme.toggle();
+$('#outBtn').onclick = signOut;
+const STAGE = { queued: 'Queued', reviewing: 'Reviewing', in_progress: 'In progress', feedback: 'Needs your feedback', done: 'Done' };
+let me;
+async function load() {
+  const [st, w, c] = await Promise.all([
+    sb.rpc('my_queue_status', { p_client: me.id }),
+    sb.from('workspaces').select('name,status,away_message,est_days_per_client').eq('id', me.workspace_id).single(),
+    sb.from('clients').select('stage').eq('id', me.id).single()
+  ]);
+  if (st.error || !st.data || !st.data.length || w.error) { toast('Could not load your place in line.'); return; }
+  const s = st.data[0], ws = w.data, stage = c.data ? c.data.stage : 'queued';
+  let head, detail = '';
+  if (s.state === 'waiting') { head = s.queue_position === 1 ? "You're next" : 'Position ' + s.queue_position + ' in line'; if (s.queue_position > 1) detail = 'About ' + (s.queue_position - 1) * ws.est_days_per_client + ' days until your turn.'; }
+  else if (s.state === 'active') head = 'Your project is in progress';
+  else if (s.state === 'done') head = 'Your project is done';
+  else head = 'You left the queue';
+  const note = ws.status === 'paused' ? 'This developer is not taking new work right now.' : ws.status === 'away' ? (ws.away_message || 'The developer is away. They will reply when they are back.') : '';
+  $('#root').innerHTML = (note ? '<div class="banner small">' + esc(note) + '</div>' : '') +
+    '<article class="ticket"><div class="top"><span class="muted small">' + esc(ws.name) + '</span><div class="num">' + pad(s.ticket_no) + '</div></div><div class="perf"></div>' +
+    '<div class="bottom"><h2>' + esc(head) + '</h2>' + (detail ? '<p class="sub small">' + esc(detail) + '</p>' : '') +
+    '<p class="pill"><i></i>' + esc(STAGE[stage] || stage) + '</p></div></article>';
+}
+(async () => {
+  const s = await requireSession(); if (!s) return;
+  const { data } = await sb.from('clients').select('id,workspace_id').eq('user_id', s.user.id).limit(1);
+  if (!data || !data.length) { location.href = 'index.html#join'; return; }
+  me = data[0]; await load(); setInterval(load, 30000);
+})();
+</script></body></html>
