@@ -63,11 +63,18 @@
 
   async function ensureAuth(mode) {
     const { data: { session } } = await sb.auth.getSession();
-    return session || openAuth(mode);
+    if (session) {
+      const { error } = await sb.auth.getUser();
+      if (!error) return session;
+      await sb.auth.signOut({ scope: 'local' }); // account was deleted, drop the old login
+    }
+    return openAuth(mode);
   }
   async function requireSession() {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) { location.href = 'index.html'; return null; }
+    const { error } = await sb.auth.getUser();
+    if (error) { await sb.auth.signOut({ scope: 'local' }); location.href = 'index.html'; return null; }
     return session;
   }
   async function signOut() { await sb.auth.signOut(); location.href = 'index.html'; }
