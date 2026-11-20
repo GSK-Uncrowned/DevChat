@@ -1,15 +1,16 @@
 <!doctype html><html lang="en" data-theme="light"><head><title>DevChat</title><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@500&display=swap"><link rel="stylesheet" href="styles.css"></head><body>
 <header class="wrap bar"><span class="mark">DevChat</span>
   <div class="row-gap"><button class="btn ghost sm" id="themeBtn" type="button">Theme</button><button class="btn ghost sm" id="outBtn" type="button">Sign out</button></div></header>
+<nav class="tabs wrap" id="tabs" style="justify-content:center"><button data-t="place" aria-current="true">My place</button><button data-t="chat">Chat</button><button data-t="req">Requirements</button><button data-t="upd">Updates</button></nav>
 <main class="wrap client-main" id="root"><p class="muted">Loading</p></main>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script><script src="config.js"></script><script src="app.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script><script src="config.js"></script><script src="app.js"></script><script src="chat.js"></script><script src="client-tabs.js"></script>
 <script>
 const { sb, $, pad, esc, initTheme, toast, requireSession, signOut } = DC;
 const theme = initTheme('client');
 $('#themeBtn').onclick = () => theme.toggle();
 $('#outBtn').onclick = signOut;
 const STAGE = { queued: 'Queued', reviewing: 'Reviewing', in_progress: 'In progress', feedback: 'Needs your feedback', done: 'Done' };
-let me;
+let me, uid, tab = 'place';
 async function load() {
   const [st, w, c] = await Promise.all([
     sb.rpc('my_queue_status', { p_client: me.id }),
@@ -33,6 +34,8 @@ async function load() {
   const s = await requireSession(); if (!s) return;
   const { data } = await sb.from('clients').select('id,workspace_id').eq('user_id', s.user.id).limit(1);
   if (!data || !data.length) { location.href = 'index.html#join'; return; }
-  me = data[0]; await load(); setInterval(load, 30000);
+  me = data[0]; uid = s.user.id; await load();
+  setInterval(() => { if (tab === 'place') load(); }, 30000);
+  document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => { tab = b.dataset.t; document.querySelectorAll('#tabs button').forEach(x => x.setAttribute('aria-current', x === b)); tab === 'place' ? load() : ClientTabs.show(tab, $('#root'), me, uid); });
 })();
 </script></body></html>

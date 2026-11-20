@@ -1,5 +1,5 @@
 <!doctype html><html lang="en" data-theme="dark"><head><title>DevChat</title><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@500&display=swap"><link rel="stylesheet" href="styles.css"></head><body><div id="app"></div>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script><script src="config.js"></script><script src="app.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script><script src="config.js"></script><script src="app.js"></script><script src="chat.js"></script><script src="dev-clients.js"></script>
 <script>
 const { sb, $, pad, esc, initTheme, toast, requireSession, signOut } = DC;
 const theme = initTheme('dev');
@@ -11,15 +11,21 @@ async function boot() {
   const s = await requireSession(); if (!s) return;
   const { data } = await sb.from('workspaces').select('*').eq('owner_id', s.user.id).limit(1);
   if (!data || !data.length) return showCreate(s.user.id);
-  ws = data[0]; shell(); show('queue');
+  ws = data[0]; await seedStyles(); shell(); show('queue');
   sb.channel('dc-dev').on('postgres_changes', { event: '*', schema: 'public', table: 'queue_entries', filter: 'workspace_id=eq.' + ws.id }, () => { if (view === 'queue') loadQueue(); }).subscribe();
+}
+async function seedStyles() {
+  const { count } = await sb.from('style_cards').select('id', { count: 'exact', head: true }).eq('workspace_id', ws.id);
+  if (count) return;
+  const P = [['Minimal mono', '#ffffff,#111111,#8a8a8a'], ['Soft floral', '#fdf2f4,#e8a0b4,#4a6b4f'], ['Dark tech', '#0b0d14,#4cc38a,#eef0f5'], ['Playful bright', '#fff3d6,#ff6b4a,#2b59ff'], ['Warm editorial', '#f7f4ee,#9a5b00,#1f1b16'], ['Bold contrast', '#000000,#ffffff,#f0b24a']];
+  await sb.from('style_cards').insert(P.map(([title, p]) => ({ workspace_id: ws.id, title, palette: p.split(',') })));
 }
 function showCreate(uid) {
   app.innerHTML = '<div class="wrap" style="max-width:480px;padding-top:96px"><form class="stack panel" style="padding:28px" id="cf"><div><h1 style="font-size:28px">Create your workspace</h1><p class="sub small" style="margin-top:4px">This is the name your clients will see.</p></div><label>Workspace name<input id="wn" required maxlength="60"></label><button class="btn primary lg" type="submit">Create workspace</button></form></div>';
-  $('#cf').onsubmit = async e => { e.preventDefault(); const { error } = await sb.from('workspaces').insert({ owner_id: uid, name: $('#wn').value.trim() }); if (error) toast('Could not create the workspace.'); else boot(); };
+  $('#cf').onsubmit = async e => { e.preventDefault(); const { error } = await sb.from('workspaces').insert({ owner_id: uid, name: $('#wn').value.trim() }); if (error) { console.error(error); toast('Could not create the workspace: ' + error.message); } else boot(); };
 }
 function shell() {
-  app.innerHTML = '<div class="app"><aside class="side"><div><span class="mark">DevChat</span><p class="muted small" style="padding:0 10px">' + esc(ws.name) + '</p></div><nav class="nav"><button data-v="queue">Queue</button><button data-v="invites">Invites</button></nav><div class="foot"><button class="btn ghost sm" id="th">Theme</button><button class="btn ghost sm" id="so">Sign out</button></div></aside><main class="main" id="main"></main></div>';
+  app.innerHTML = '<div class="app"><aside class="side"><div><span class="mark">DevChat</span><p class="muted small" style="padding:0 10px">' + esc(ws.name) + '</p></div><nav class="nav"><button data-v="queue">Queue</button><button data-v="clients">Clients</button><button data-v="invites">Invites</button></nav><div class="foot"><button class="btn ghost sm" id="th">Theme</button><button class="btn ghost sm" id="so">Sign out</button></div></aside><main class="main" id="main"></main></div>';
   main = $('#main');
   document.querySelectorAll('.nav button').forEach(b => b.onclick = () => show(b.dataset.v));
   $('#th').onclick = () => theme.toggle(); $('#so').onclick = signOut;
@@ -28,7 +34,7 @@ function shell() {
 function show(v) {
   view = v;
   document.querySelectorAll('.nav button').forEach(b => b.setAttribute('aria-current', b.dataset.v === v));
-  v === 'queue' ? loadQueue() : loadInvites();
+  v === 'queue' ? loadQueue() : v === 'clients' ? DevClients.show(main, ws) : loadInvites();
 }
 const stageSel = (id, cur) => '<select data-stage="' + id + '" aria-label="Stage">' + STAGES.map(([v, l]) => '<option value="' + v + '"' + (v === cur ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>';
 
@@ -37,7 +43,7 @@ async function loadQueue() {
     sb.from('queue_entries').select('client_id,ticket_no,sort_key,state').eq('workspace_id', ws.id).in('state', ['waiting', 'active']).order('sort_key'),
     sb.from('clients').select('id,display_name,stage').eq('workspace_id', ws.id)
   ]);
-  if (q.error || c.error) { toast('Could not load the queue.'); return; }
+  if (q.error || c.error) { const er = q.error || c.error; console.error(er); toast('Could not load the queue: ' + er.message); return; }
   const by = {}; c.data.forEach(x => by[x.id] = x);
   const active = q.data.filter(e => e.state === 'active'); waiting = q.data.filter(e => e.state === 'waiting');
   const who = e => esc((by[e.client_id] || {}).display_name || 'Client');
@@ -55,7 +61,7 @@ async function loadQueue() {
 
 async function loadInvites() {
   const { data, error } = await sb.from('invites').select('*').eq('workspace_id', ws.id).order('created_at', { ascending: false });
-  if (error) { toast('Could not load invites.'); return; }
+  if (error) { console.error(error); toast('Could not load invites: ' + error.message); return; }
   const link = c => new URL('index.html?code=' + c, location.href).href;
   main.innerHTML = '<header class="page-h"><div><h1>Invites</h1><p class="sub small">Each code works once and expires in 7 days.</p></div><button class="btn primary" data-act="newinvite">Create invite</button></header>' +
     (data.length ? '<div class="panel">' + data.map(i => {

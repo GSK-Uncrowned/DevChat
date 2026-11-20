@@ -73,3 +73,20 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 #toast.show{opacity:1;transform:translate(-50%,0)}
 @media(max-width:820px){.hero{grid-template-columns:1fr;gap:40px;padding:48px 0 40px}.app{grid-template-columns:1fr}.side{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;padding:12px}.side .foot{margin:0 0 0 auto;display:flex}.main{padding:20px}.item{grid-template-columns:56px 1fr}.item>:last-child{grid-column:1/-1}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+/* tabs, chat, style picker */
+.tabs{display:flex;gap:2px;margin-bottom:20px;flex-wrap:wrap}
+.tabs button{height:32px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:var(--text2);cursor:pointer}
+.tabs button[aria-current=true]{background:var(--raised);color:var(--text)}
+.chat{display:grid;grid-template-rows:1fr auto;gap:12px;height:min(560px,70vh);width:100%}
+.msgs{overflow:auto;display:flex;flex-direction:column;gap:8px;padding:4px}
+.msg{max-width:75%;padding:8px 12px;border-radius:12px;background:var(--raised);align-self:flex-start;overflow-wrap:anywhere}
+.msg.me{align-self:flex-end;background:var(--text);color:var(--bg)}
+.chat-in{display:flex;gap:8px}
+textarea{width:100%;min-height:72px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--raised);resize:vertical}
+.sw{display:flex;height:28px;border-radius:8px;overflow:hidden;border:1px solid var(--line)}.sw i{flex:1}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
+.card{padding:12px;display:grid;gap:8px}
+.pick{display:flex;gap:4px;flex-wrap:wrap}
+.pick .btn[aria-pressed=true]{background:var(--text);color:var(--bg)}
+.pad{padding:16px}
+.pane{width:100%;max-width:520px}
