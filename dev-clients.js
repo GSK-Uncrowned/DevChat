@@ -5,28 +5,33 @@ window.DevClients = (function () {
   const lbl = s => (ST.find(x => x[0] === s) || [0, s])[1];
   const none = t => '<div class="item sub" style="grid-template-columns:1fr">' + t + '</div>';
   let main, ws, list = [], stop = null;
+  let onOpen = () => {};
+  function init(m, w, cb) { main = m; ws = w; onOpen = cb; }
 
-  async function show(m, w) {
-    main = m; ws = w; if (stop) { stop(); stop = null; }
+  async function show() {
+    if (stop) { stop(); stop = null; }
     const [c, q] = await Promise.all([
       sb.from('clients').select('id,display_name,stage,created_at').eq('workspace_id', ws.id).order('created_at'),
       sb.from('queue_entries').select('client_id,ticket_no').eq('workspace_id', ws.id)]);
     if (c.error) return toast('Could not load clients: ' + c.error.message);
     list = c.data; const t = {}; (q.data || []).forEach(e => t[e.client_id] = e.ticket_no);
-    main.innerHTML = '<header class="page-h"><div><h1>Clients</h1><p class="sub small">' + list.length + ' total</p></div></header>' + (list.length ? '<div class="panel">' + list.map(x => '<div class="item"><span class="tno">' + pad(t[x.id] || 0) + '</span><span>' + esc(x.display_name) + '<br><span class="muted small">' + lbl(x.stage) + '</span></span><button class="btn sm" data-open="' + x.id + '">Open</button></div>').join('') + '</div>' : '<div class="panel empty"><h2>No clients yet</h2><p class="sub small">Create an invite to get your first one.</p></div>');
-    main.onclick = e => { const b = e.target.closest('[data-open]'); if (b) open(list.find(x => x.id === b.dataset.open), t); };
+    main.innerHTML = '<header class="page-h"><div><h1>Clients</h1><p class="sub small">' + list.length + ' total</p></div></header>' + (list.length ? '<div class="panel">' + list.map(x => '<div class="item" style="grid-template-columns:72px 1fr auto"><span class="tno">' + pad(t[x.id] || 0) + '</span><span>' + esc(x.display_name) + '<br><span class="muted small">' + lbl(x.stage) + '</span></span><span class="row-gap"><button class="btn ghost sm" data-open="' + x.id + '" data-tab="Chat">Chat</button><button class="btn sm" data-open="' + x.id + '" data-tab="Overview">Open</button></span></div>').join('') + '</div>' : '<div class="panel empty"><h2>No clients yet</h2><p class="sub small">Create an invite to get your first one.</p></div>');
+    main.onclick = e => { const b = e.target.closest('[data-open]'); if (b) onOpen(list.find(x => x.id === b.dataset.open), b.dataset.tab); };
   }
 
-  async function open(c, t) {
-    const uid = (await sb.auth.getSession()).data.session.user.id;
-    main.innerHTML = '<header class="page-h"><div><button class="btn ghost sm" data-back>Back</button><h1>' + esc(c.display_name) + '</h1><p class="sub small">' + pad(t[c.id] || 0) + '</p></div></header><nav class="tabs">' + ['Overview', 'Chat', 'Requirements', 'Notes', 'Checklist'].map(n => '<button data-t="' + n + '">' + n + '</button>').join('') + '</nav><div id="tb"></div>';
-    const tab = async n => {
-      if (stop) { stop(); stop = null; }
-      main.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-current', b.dataset.t === n));
-      const tb = main.querySelector('#tb'); tb.onclick = tb.onchange = null; await TABS[n](tb, c, uid);
-    };
-    main.onclick = e => { const b = e.target.closest('button'); if (!b) return; if (b.hasAttribute('data-back')) show(main, ws); else if (b.dataset.t) tab(b.dataset.t); };
-    tab('Overview');
+  // Shows one client's page. The sidebar picks the tab.
+  async function open(c, tab) {
+    if (stop) { stop(); stop = null; }
+    main.onclick = null;
+    const [f, q, ses] = await Promise.all([
+      sb.from('clients').select('id,display_name,stage,created_at').eq('id', c.id).maybeSingle(),
+      sb.from('queue_entries').select('ticket_no').eq('client_id', c.id).maybeSingle(),
+      sb.auth.getSession()]);
+    if (!f.data) { main.innerHTML = '<div class="panel empty"><h2>That client is no longer here</h2></div>'; return false; }
+    const cl = f.data, uid = ses.data.session.user.id;
+    main.innerHTML = '<header class="page-h"><div><h1>' + esc(cl.display_name) + '</h1><p class="sub small">' + pad(q.data ? q.data.ticket_no : 0) + ' &middot; ' + tab + '</p></div></header><div id="tb"></div>';
+    await TABS[tab](main.querySelector('#tb'), cl, uid);
+    return true;
   }
 
   const TABS = {
@@ -59,5 +64,5 @@ window.DevClients = (function () {
       draw();
     }
   };
-  return { show };
+  return { init, show, open };
 })();
