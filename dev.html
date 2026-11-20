@@ -41,10 +41,10 @@ let cur = null, tab = 'Overview', subOpen = true, min = false;
 try { cur = JSON.parse(localStorage.getItem('devchat-cur')); min = localStorage.getItem('devchat-min') === '1'; } catch (e) {}
 
 function shell() {
-  app.innerHTML = '<div class="app' + (min ? ' min' : '') + '" id="shell"><aside class="side"><div class="side-h"><span class="mark">DevChat</span><button class="chev" id="mn" aria-label="Collapse sidebar">' + ic(I.panel) + '</button></div><nav class="navv" id="nav"></nav><div class="side-f"><p class="ws">' + esc(ws.name) + '</p><button class="ni" id="th" title="Theme">' + ic(I.theme) + '<span class="lb">Theme</span></button><button class="ni" id="so" title="Sign out">' + ic(I.out) + '<span class="lb">Sign out</span></button></div></aside><main class="main" id="main"></main></div>';
+  app.innerHTML = '<div class="app' + (min ? ' min' : '') + '" id="shell"><aside class="side"><div class="side-h"><span class="mark">DevChat</span><button class="chev" id="mn" aria-label="' + (min ? 'Expand sidebar' : 'Collapse sidebar') + '">' + ic(I.panel) + '</button></div><nav class="navv" id="nav"></nav><div class="side-f"><p class="ws">' + esc(ws.name) + '</p><button class="ni" id="th" title="Theme">' + ic(I.theme) + '<span class="lb">Theme</span></button><button class="ni" id="so" title="Sign out">' + ic(I.out) + '<span class="lb">Sign out</span></button></div></aside><main class="main" id="main"></main></div>';
   main = $('#main');
   $('#th').onclick = () => theme.toggle(); $('#so').onclick = signOut;
-  $('#mn').onclick = () => { min = !min; $('#shell').classList.toggle('min', min); try { localStorage.setItem('devchat-min', min ? '1' : '0'); } catch (e) {} };
+  $('#mn').onclick = () => { min = !min; $('#shell').classList.toggle('min', min); $('#mn').setAttribute('aria-label', min ? 'Expand sidebar' : 'Collapse sidebar'); try { localStorage.setItem('devchat-min', min ? '1' : '0'); } catch (e) {} };
   $('#nav').onclick = e => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.v) show(b.dataset.v);
