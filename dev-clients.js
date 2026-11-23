@@ -54,36 +54,77 @@ window.DevClients = (function () {
       draw();
     },
     AI(tb, c, uid) {
-      const K = [['catch_up', 'Catch me up'], ['draft_reply', 'Draft a reply'], ['tasks', 'Pull out tasks'], ['spec', 'Write the brief'], ['scope_check', 'Check scope']];
-      tb.innerHTML = '<p class="sub small" style="margin-bottom:12px">Client messages are sent to an AI to do this. Nothing reaches the client until you send it.</p><div class="row-gap" style="flex-wrap:wrap">' + K.map(([k, l]) => '<button class="btn" data-k="' + k + '">' + l + '</button>').join('') + '</div><div id="out" style="margin-top:16px"></div>';
-      const out = tb.querySelector('#out'); let last = '';
-      const draw = (k, text) => {
-        last = text;
-        if (k === 'draft_reply') { out.innerHTML = '<div class="panel pad stack"><textarea style="min-height:140px">' + esc(text) + '</textarea><div class="row-gap"><button class="btn primary" data-send>Send to client</button></div></div>'; return; }
-        let items = []; if (k === 'tasks') { try { items = JSON.parse(text.replace(/^```(json)?|```$/g, '').trim()); } catch (e) {} }
-        if (Array.isArray(items) && items.length) { out.innerHTML = '<div class="panel">' + items.map(t => '<div class="item" style="grid-template-columns:1fr">' + esc(String(t)) + '</div>').join('') + '</div><button class="btn primary" style="margin-top:12px" data-tasks>Add all to checklist</button>'; last = items; return; }
-        out.innerHTML = '<div class="panel pad stack"><div style="white-space:pre-wrap">' + esc(text) + '</div><div class="row-gap"><button class="btn" data-note>Save as private note</button></div></div>';
+      let sess = [], cur = null, hist = [];
+      const CH = [['Catch me up', 'Catch me up on this client.'], ['Draft a reply', "Draft a reply to the client's latest message."], ['Pull out tasks', 'Pull out the concrete tasks from the conversation and wish list.'], ['Write the brief', 'Write a project brief for this client.'], ['Check scope', 'Is anything the client asked for beyond the original wish list?']];
+      tb.innerHTML = '<div class="aiwrap"><aside><button class="btn" id="nc" style="width:100%;margin-bottom:12px">New chat</button><div class="sess" id="sl"></div></aside><div class="aichat"><p class="sub small">Client messages are sent to an AI. It can only suggest changes. Nothing happens until you approve it.</p><div class="msgs" id="am"></div><div class="row-gap" style="flex-wrap:wrap">' + CH.map(([l, q]) => '<button class="btn sm" data-q="' + esc(q) + '">' + l + '</button>').join('') + '</div><form class="chat-in" id="af"><input name="q" placeholder="Ask about this client" autocomplete="off" required><button class="btn primary">Ask</button></form></div></div>';
+      const box = tb.querySelector('#am'), sl = tb.querySelector('#sl');
+      const drawList = () => { sl.innerHTML = sess.length ? sess.map(x => '<div class="srow"><button class="si" data-s="' + x.id + '"' + (x.id === cur ? ' aria-current="true"' : '') + '>' + esc(x.title) + '</button><button class="sdel" data-del="' + x.id + '" aria-label="Delete chat">&times;</button></div>').join('') : '<p class="muted small" style="padding:0 10px">No chats yet.</p>'; };
+      const card = (a, mi, ai, done) => {
+        const id = mi + ':' + ai; let body, label;
+        if (a.type === 'add_tasks') { body = '<ul>' + a.items.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>'; label = 'Add to checklist'; }
+        else if (a.type === 'set_stage') { body = '<span>Move this client to <strong>' + esc(lbl(a.stage)) + '</strong></span>'; label = 'Change stage'; }
+        else if (a.type === 'add_note') { body = '<span>' + esc(a.body) + '</span><span class="muted small">' + (a.shared ? 'Visible to the client' : 'Private note') + '</span>'; label = 'Save note'; }
+        else { body = '<textarea data-dm="' + id + '">' + esc(a.body) + '</textarea>'; label = 'Send to client'; }
+        return '<div class="panel pad act stack"><span class="muted small">Suggestion</span>' + body + '<div><button class="btn sm primary" data-act="' + id + '"' + (done ? ' disabled' : '') + '>' + (done ? 'Done' : label) + '</button></div></div>';
       };
+      const draw = () => {
+        box.innerHTML = hist.length ? hist.map((m, mi) => m.role === 'user' ? '<div class="msg me">' + esc(m.content) + '</div>' : '<div class="amsg"><div class="msg">' + esc(m.content) + '</div>' + (m.actions || []).map((a, ai) => card(a, mi, ai, m.done && m.done[ai])).join('') + '</div>').join('') : '<p class="muted small">Ask about this client, or use a shortcut below.</p>';
+        box.scrollTop = box.scrollHeight;
+      };
+      const open = async id => {
+        cur = id; const { data } = await sb.from('ai_messages').select('id,role,content,actions,done').eq('session_id', id).order('created_at');
+        hist = data || []; drawList(); draw();
+      };
+      const ask = async q => {
+        if (!cur) {
+          const { data, error } = await sb.from('ai_sessions').insert({ workspace_id: ws.id, client_id: c.id, title: q.slice(0, 40) }).select('id,title,updated_at').single();
+          if (error) return toast(error.message);
+          cur = data.id; sess.unshift(data); drawList();
+        }
+        hist.push({ role: 'user', content: q, actions: [], done: {} }); draw();
+        box.insertAdjacentHTML('beforeend', '<p class="muted small">Thinking</p>'); box.scrollTop = box.scrollHeight;
+        await sb.from('ai_messages').insert({ session_id: cur, workspace_id: ws.id, role: 'user', content: q });
+        const { data, error } = await sb.functions.invoke('ai', { body: { client_id: c.id, kind: 'chat', messages: hist.map(m => ({ role: m.role, content: m.content })) } });
+        if (error || !data || data.error) hist.push({ role: 'assistant', content: 'Sorry, that did not work. Check that the ai function is deployed and its key is set.', actions: [], done: {} });
+        else {
+          const m = { role: 'assistant', content: data.reply || '', actions: data.actions || [], done: {} };
+          const r = await sb.from('ai_messages').insert({ session_id: cur, workspace_id: ws.id, role: 'assistant', content: m.content, actions: m.actions }).select('id').single();
+          m.id = r.data && r.data.id; hist.push(m);
+          sb.from('ai_sessions').update({ updated_at: new Date().toISOString() }).eq('id', cur).then(() => {});
+        }
+        draw();
+      };
+      tb.querySelector('#af').onsubmit = e => { e.preventDefault(); const f = e.target, q = f.q.value.trim(); if (!q) return; f.q.value = ''; ask(q); };
       tb.onclick = async e => {
         const b = e.target.closest('button'); if (!b) return;
-        if (b.dataset.k) {
-          const all = tb.querySelectorAll('[data-k]'); all.forEach(x => x.disabled = true); out.innerHTML = '<p class="muted">Working on it</p>';
-          const { data, error } = await sb.functions.invoke('ai', { body: { client_id: c.id, kind: b.dataset.k } });
-          all.forEach(x => x.disabled = false);
-          if (error || !data || data.error) { out.innerHTML = '<p class="err">Could not run the AI. Check that the ai function is deployed and its API key is set.</p>'; return; }
-          draw(b.dataset.k, data.text);
-        } else if (b.hasAttribute('data-send')) {
-          const body = out.querySelector('textarea').value.trim(); if (!body) return;
-          const { error } = await sb.from('messages').insert({ client_id: c.id, workspace_id: ws.id, sender_id: uid, sender_kind: 'developer', body });
-          toast(error ? error.message : 'Sent to the client.');
-        } else if (b.hasAttribute('data-note')) {
-          const { error } = await sb.from('notes').insert({ client_id: c.id, workspace_id: ws.id, author_id: uid, body: last, visibility: 'private' });
-          toast(error ? error.message : 'Saved as a private note.');
-        } else if (b.hasAttribute('data-tasks')) {
-          const { error } = await sb.from('checklist_items').insert(last.map(t => ({ client_id: c.id, workspace_id: ws.id, text: String(t) })));
-          toast(error ? error.message : 'Added to the checklist.');
+        if (b.id === 'nc') { cur = null; hist = []; drawList(); draw(); return; }
+        if (b.dataset.s) return open(b.dataset.s);
+        if (b.dataset.del) {
+          if (!confirm('Delete this chat?')) return;
+          const { error } = await sb.from('ai_sessions').delete().eq('id', b.dataset.del);
+          if (error) return toast(error.message);
+          sess = sess.filter(x => x.id !== b.dataset.del);
+          if (cur === b.dataset.del) { cur = null; hist = []; }
+          drawList(); draw(); return;
         }
+        if (b.dataset.q) return ask(b.dataset.q);
+        if (!b.dataset.act) return;
+        const [mi, ai] = b.dataset.act.split(':').map(Number), m = hist[mi], a = m.actions[ai];
+        b.disabled = true; let error;
+        if (a.type === 'add_tasks') ({ error } = await sb.from('checklist_items').insert(a.items.map(t => ({ client_id: c.id, workspace_id: ws.id, text: t }))));
+        else if (a.type === 'set_stage') { ({ error } = await sb.from('clients').update({ stage: a.stage }).eq('id', c.id)); if (!error) c.stage = a.stage; }
+        else if (a.type === 'add_note') ({ error } = await sb.from('notes').insert({ client_id: c.id, workspace_id: ws.id, author_id: uid, body: a.body, visibility: a.shared ? 'shared' : 'private' }));
+        else { const el = tb.querySelector('[data-dm="' + b.dataset.act + '"]'); const body = ((el && el.value) || a.body).trim(); if (body) ({ error } = await sb.from('messages').insert({ client_id: c.id, workspace_id: ws.id, sender_id: uid, sender_kind: 'developer', body })); }
+        if (error) { b.disabled = false; toast(error.message); return; }
+        (m.done = m.done || {})[ai] = true;
+        if (m.id) sb.from('ai_messages').update({ done: m.done }).eq('id', m.id).then(() => {});
+        draw(); toast('Done.');
       };
+      drawList(); draw();
+      sb.from('ai_sessions').select('id,title,updated_at').eq('client_id', c.id).order('updated_at', { ascending: false }).then(({ data, error }) => {
+        if (error) return toast('Could not load chats: ' + error.message);
+        sess = data || []; if (sess.length) open(sess[0].id); else drawList();
+      });
     },
     async Checklist(tb, c) {
       const draw = async () => {
