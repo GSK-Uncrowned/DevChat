@@ -53,6 +53,38 @@ window.DevClients = (function () {
       };
       draw();
     },
+    AI(tb, c, uid) {
+      const K = [['catch_up', 'Catch me up'], ['draft_reply', 'Draft a reply'], ['tasks', 'Pull out tasks'], ['spec', 'Write the brief'], ['scope_check', 'Check scope']];
+      tb.innerHTML = '<p class="sub small" style="margin-bottom:12px">Client messages are sent to an AI to do this. Nothing reaches the client until you send it.</p><div class="row-gap" style="flex-wrap:wrap">' + K.map(([k, l]) => '<button class="btn" data-k="' + k + '">' + l + '</button>').join('') + '</div><div id="out" style="margin-top:16px"></div>';
+      const out = tb.querySelector('#out'); let last = '';
+      const draw = (k, text) => {
+        last = text;
+        if (k === 'draft_reply') { out.innerHTML = '<div class="panel pad stack"><textarea style="min-height:140px">' + esc(text) + '</textarea><div class="row-gap"><button class="btn primary" data-send>Send to client</button></div></div>'; return; }
+        let items = []; if (k === 'tasks') { try { items = JSON.parse(text.replace(/^```(json)?|```$/g, '').trim()); } catch (e) {} }
+        if (Array.isArray(items) && items.length) { out.innerHTML = '<div class="panel">' + items.map(t => '<div class="item" style="grid-template-columns:1fr">' + esc(String(t)) + '</div>').join('') + '</div><button class="btn primary" style="margin-top:12px" data-tasks>Add all to checklist</button>'; last = items; return; }
+        out.innerHTML = '<div class="panel pad stack"><div style="white-space:pre-wrap">' + esc(text) + '</div><div class="row-gap"><button class="btn" data-note>Save as private note</button></div></div>';
+      };
+      tb.onclick = async e => {
+        const b = e.target.closest('button'); if (!b) return;
+        if (b.dataset.k) {
+          const all = tb.querySelectorAll('[data-k]'); all.forEach(x => x.disabled = true); out.innerHTML = '<p class="muted">Working on it</p>';
+          const { data, error } = await sb.functions.invoke('ai', { body: { client_id: c.id, kind: b.dataset.k } });
+          all.forEach(x => x.disabled = false);
+          if (error || !data || data.error) { out.innerHTML = '<p class="err">Could not run the AI. Check that the ai function is deployed and its API key is set.</p>'; return; }
+          draw(b.dataset.k, data.text);
+        } else if (b.hasAttribute('data-send')) {
+          const body = out.querySelector('textarea').value.trim(); if (!body) return;
+          const { error } = await sb.from('messages').insert({ client_id: c.id, workspace_id: ws.id, sender_id: uid, sender_kind: 'developer', body });
+          toast(error ? error.message : 'Sent to the client.');
+        } else if (b.hasAttribute('data-note')) {
+          const { error } = await sb.from('notes').insert({ client_id: c.id, workspace_id: ws.id, author_id: uid, body: last, visibility: 'private' });
+          toast(error ? error.message : 'Saved as a private note.');
+        } else if (b.hasAttribute('data-tasks')) {
+          const { error } = await sb.from('checklist_items').insert(last.map(t => ({ client_id: c.id, workspace_id: ws.id, text: String(t) })));
+          toast(error ? error.message : 'Added to the checklist.');
+        }
+      };
+    },
     async Checklist(tb, c) {
       const draw = async () => {
         const { data } = await sb.from('checklist_items').select('*').eq('client_id', c.id).order('created_at');
