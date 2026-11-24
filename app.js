@@ -91,5 +91,11 @@
     return null;
   }
 
+  // Ignore accidental double clicks and double submits (a second one within a moment is dropped).
+  const seen = new WeakMap();
+  const tooSoon = (el, ms) => { const n = Date.now(); if (n - (seen.get(el) || 0) < ms) return true; seen.set(el, n); return false; };
+  document.addEventListener('submit', e => { if (tooSoon(e.target, 1000)) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+  document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('button'); if (b && tooSoon(b, 600)) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+
   window.DC = { sb, $, pad, esc, initTheme, toast, openAuth, ensureAuth, requireSession, signOut, route };
 })();
