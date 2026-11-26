@@ -412,3 +412,69 @@ create policy faq_owner on public.ai_faq for all
 -- ============ REALTIME ============
 -- Realtime change events respect RLS, so users only receive rows they can select.
 alter publication supabase_realtime add table public.messages, public.queue_entries, public.clients;
+
+-- ============ GRANTS ============
+-- New Supabase projects don't expose new tables to the Data API automatically.
+-- Row Level Security above still decides which rows each person can see.
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on all tables in schema public to authenticated;
+grant execute on all functions in schema public to authenticated;
+alter default privileges in schema public
+  grant select, insert, update, delete on tables to authenticated;
+
+-- ============ LATER ADDITIONS (all in one place) ============
+alter table public.workspaces add column away_ai boolean not null default false;
+alter table public.clients add column preview_url text, add column status_note text;
+alter table public.messages add column file_id uuid references public.files(id) on delete set null;
+
+-- AI assistant chat sessions
+create table public.ai_sessions (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  client_id uuid not null,
+  title text not null default 'New chat',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (id, workspace_id),
+  foreign key (client_id, workspace_id) references public.clients (id, workspace_id) on delete cascade
+);
+create table public.ai_messages (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid not null,
+  workspace_id uuid not null,
+  role text not null check (role in ('user','assistant')),
+  content text not null,
+  actions jsonb not null default '[]',
+  done jsonb not null default '{}',
+  created_at timestamptz not null default now(),
+  foreign key (session_id, workspace_id) references public.ai_sessions (id, workspace_id) on delete cascade
+);
+create index on public.ai_sessions (client_id, updated_at desc);
+create index on public.ai_messages (session_id, created_at);
+alter table public.ai_sessions enable row level security;
+alter table public.ai_messages enable row level security;
+create policy ais_owner on public.ai_sessions for all using (is_ws_owner(workspace_id)) with check (is_ws_owner(workspace_id));
+create policy aim_owner on public.ai_messages for all using (is_ws_owner(workspace_id)) with check (is_ws_owner(workspace_id));
+
+-- clients may log their own file uploads
+create policy log_client_insert on public.activity_log for insert
+  with check (is_my_client(client_id) and actor_id = (select auth.uid()) and kind = 'file_uploaded');
+
+-- file storage (path: workspace_id/client_id/filename)
+insert into storage.buckets (id, name, public) values ('client-files', 'client-files', false) on conflict (id) do nothing;
+create policy files_owner on storage.objects for all to authenticated
+  using (bucket_id = 'client-files' and public.is_ws_owner(((storage.foldername(name))[1])::uuid))
+  with check (bucket_id = 'client-files' and public.is_ws_owner(((storage.foldername(name))[1])::uuid));
+create policy files_client_read on storage.objects for select to authenticated
+  using (bucket_id = 'client-files' and public.is_my_client(((storage.foldername(name))[2])::uuid));
+create policy files_client_insert on storage.objects for insert to authenticated
+  with check (bucket_id = 'client-files' and public.is_my_client(((storage.foldername(name))[2])::uuid));
+
+-- grants for every table, including the ones added above
+grant usage on schema public to authenticated, service_role;
+grant select, insert, update, delete on all tables in schema public to authenticated, service_role;
+grant execute on all functions in schema public to authenticated, service_role;
+alter default privileges in schema public grant select, insert, update, delete on tables to authenticated, service_role;
+
+-- Reminders are pinned notes. Run once in the Supabase SQL editor.
+alter table public.notes add column if not exists pinned boolean not null default false;

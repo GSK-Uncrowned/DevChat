@@ -95,7 +95,13 @@
   const seen = new WeakMap();
   const tooSoon = (el, ms) => { const n = Date.now(); if (n - (seen.get(el) || 0) < ms) return true; seen.set(el, n); return false; };
   document.addEventListener('submit', e => { if (tooSoon(e.target, 1000)) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
-  document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('button'); if (b && tooSoon(b, 600)) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+  document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('button'); if (b && !b.hasAttribute('data-fast') && tooSoon(b, 600)) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
 
-  window.DC = { sb, $, pad, esc, initTheme, toast, openAuth, ensureAuth, requireSession, signOut, route };
+  async function log(ws, client, kind, meta, visible) {
+    const { data: { session } } = await sb.auth.getSession();
+    return sb.from('activity_log').insert({ workspace_id: ws, client_id: client, actor_id: session.user.id, kind, meta: meta || {}, client_visible: !!visible });
+  }
+  const actText = a => ({ client_joined: 'Joined the queue', stage_changed: 'Stage changed to ' + String((a.meta || {}).stage || '').replace('_', ' '), task_done: 'Completed: ' + ((a.meta || {}).text || 'a task'), file_uploaded: 'File uploaded: ' + ((a.meta || {}).name || ''), preview_updated: 'Preview or status updated' }[a.kind] || a.kind);
+
+  window.DC = { log, actText, sb, $, pad, esc, initTheme, toast, openAuth, ensureAuth, requireSession, signOut, route };
 })();

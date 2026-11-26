@@ -1,4 +1,4 @@
-// Client side: Chat, Requirements (wish list + style picker) and Updates.
+// Client side: Chat (files live inside it), Requirements (wish list + style picker) and Progress.
 window.ClientTabs = (function () {
   const { sb, esc, toast } = DC;
   const row = h => '<div class="item" style="grid-template-columns:1fr">' + h + '</div>';
@@ -7,13 +7,16 @@ window.ClientTabs = (function () {
   async function show(t, root, me, uid) {
     if (stop) { stop(); stop = null; }
     root.innerHTML = '<div class="pane" id="pn"></div>'; const pn = root.querySelector('#pn');
-    if (t === 'chat') {
+    if (t === 'chat') Chat.mount(pn, { clientId: me.id, workspaceId: me.workspace_id, kind: 'client', uid, canDelete: false, afterSend: async () => {
+      // Check the developer's status fresh each time, so switching to Away takes effect right away.
       const { data: w } = await sb.from('workspaces').select('status,away_ai').eq('id', me.workspace_id).single();
-      const away = w && w.status === 'away' && w.away_ai;
-      Chat.mount(pn, { clientId: me.id, workspaceId: me.workspace_id, kind: 'client', uid, afterSend: away ? async () => (await sb.functions.invoke('away', { body: { client_id: me.id } })).data : null }).then(f => stop = f);
-    }
+      if (!(w && w.status === 'away' && w.away_ai)) return null;
+      const { data, error } = await sb.functions.invoke('away', { body: { client_id: me.id } });
+      if (error) console.error('Away reply failed:', error);
+      return data;
+    } }).then(f => stop = f);
     if (t === 'req') req(pn, me);
-    if (t === 'upd') upd(pn, me);
+    if (t === 'upd') upd(pn, me).then(f => stop = f);
   }
 
   async function req(pn, me) {
@@ -38,9 +41,43 @@ window.ClientTabs = (function () {
     draw();
   }
 
+  // Progress: a live "what is happening right now" line (set by the developer or by @ai in the chat),
+  // a progress bar, the live preview, shared checklist and notes. Returns a function that stops live updates.
   async function upd(pn, me) {
-    const [n, k] = await Promise.all([sb.from('notes').select('body').eq('client_id', me.id).eq('visibility', 'shared').order('created_at', { ascending: false }), sb.from('checklist_items').select('text,done').eq('client_id', me.id).eq('visible_to_client', true).order('created_at')]);
-    pn.innerHTML = '<h2>Updates</h2><p class="sec">Checklist</p><div class="panel">' + ((k.data || []).map(i => row((i.done ? 'Done: ' : 'To do: ') + esc(i.text))).join('') || row('<span class="sub">Nothing shared yet.</span>')) + '</div><p class="sec">Notes</p><div class="panel">' + ((n.data || []).map(x => row(esc(x.body))).join('') || row('<span class="sub">No notes yet.</span>')) + '</div>';
+    pn.innerHTML = '<div class="panel pad stack"><div class="live"><i class="pulse" aria-hidden="true"></i><div><p class="muted small">Right now</p><p class="st" id="lv" aria-live="polite"></p></div></div>' +
+      '<div class="row-gap" style="justify-content:space-between"><strong>Project progress</strong><span class="muted small" id="pc"></span></div><div class="prog"><i id="pb" style="width:0%"></i></div></div>' +
+      '<div class="sh"><h2>Live preview</h2></div><div id="pv"></div>' +
+      '<div class="sh"><h2>Checklist</h2></div><div class="panel" id="cl"></div>' +
+      '<div class="sh"><h2>Notes</h2></div><div class="panel" id="nt"></div>';
+    const $$ = s => pn.querySelector(s);
+    const setLive = note => {
+      const el = $$('#lv'); el.textContent = '';
+      if (note) { const w = document.createElement('span'); w.className = 'shim'; w.textContent = note; el.append(w); const d = document.createElement('span'); d.className = 'dots'; d.innerHTML = '<i></i><i></i><i></i>'; el.append(d); el.classList.remove('idle'); }
+      else { el.textContent = 'Waiting for the first update'; el.classList.add('idle'); }
+    };
+    let shownUrl;
+    const refresh = async () => {
+      const [cl, n, k] = await Promise.all([
+        sb.from('clients').select('preview_url,status_note').eq('id', me.id).single(),
+        sb.from('notes').select('body').eq('client_id', me.id).eq('visibility', 'shared').order('created_at', { ascending: false }),
+        sb.from('checklist_items').select('text,done').eq('client_id', me.id).eq('visible_to_client', true).order('created_at')]);
+      if (!pn.isConnected) return;
+      const K = k.data || [], done = K.filter(x => x.done).length, pct = K.length ? Math.round(done / K.length * 100) : 0, c = cl.data || {};
+      setLive(c.status_note);
+      $$('#pc').textContent = K.length ? done + ' of ' + K.length + ' done' : 'No tasks shared yet'; $$('#pb').style.width = pct + '%';
+      let url = null; try { const u = new URL(c.preview_url || ''); if (/^https?:$/.test(u.protocol)) url = u.href; } catch (e) {}
+      if (url !== shownUrl) { // only touch the iframe when the link changes, so it never reloads by itself
+        shownUrl = url;
+        $$('#pv').innerHTML = url ? '<div class="panel prev"><iframe src="' + esc(url) + '" sandbox="allow-scripts allow-same-origin allow-forms" loading="lazy" title="Live preview"></iframe></div><p class="sub small" style="margin-top:8px">If the preview is blank, <a href="' + esc(url) + '" target="_blank" rel="noopener">open it in a new tab</a>.</p>' : '<div class="panel empty"><p class="sub">Your developer has not shared a preview yet.</p></div>';
+      }
+      $$('#cl').innerHTML = K.map(i => row((i.done ? 'Done: ' : 'To do: ') + esc(i.text))).join('') || row('<span class="sub">Nothing shared yet.</span>');
+      $$('#nt').innerHTML = (n.data || []).map(x => row(esc(x.body))).join('') || row('<span class="sub">No notes yet.</span>');
+    };
+    await refresh();
+    // The clients table is in the realtime publication, so a new status appears the moment it is set. The poll catches checklist ticks.
+    const ch = sb.channel('st-' + me.id).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'clients', filter: 'id=eq.' + me.id }, () => refresh()).subscribe();
+    const iv = setInterval(refresh, 20000);
+    return () => { clearInterval(iv); sb.removeChannel(ch); };
   }
   return { show };
 })();
