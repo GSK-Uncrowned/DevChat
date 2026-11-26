@@ -5,7 +5,6 @@
   const pad = n => '#' + String(n).padStart(3, '0');
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-  // side: 'dev' defaults to dark, 'client' defaults to light. The choice is remembered per side.
   function initTheme(side) {
     const key = 'devchat-theme-' + side;
     const apply = t => document.documentElement.setAttribute('data-theme', t);
@@ -29,23 +28,27 @@
       let m = mode || 'up';
       const d = document.createElement('dialog'); d.className = 'modal';
       d.innerHTML = `<form class="stack">
-        <h2></h2><p class="sub small">You need an account to do that.</p>
-        <label>Email<input type="email" name="email" required autocomplete="email"></label>
-        <label>Password<input type="password" name="password" required minlength="6"></label>
+        <div class="between">
+          <div><h2></h2><p class="sub sm" style="margin-top:4px">Sign in or create an account to continue.</p></div>
+          <button type="button" class="btn ghost sm" data-x aria-label="Close">&times;</button>
+        </div>
+        <label>Email<input type="email" name="email" required autocomplete="email" placeholder="you@example.com"></label>
+        <label>Password<input type="password" name="password" required minlength="6" placeholder="At least 6 characters"></label>
         <p class="err" role="alert"></p>
         <button class="btn primary lg go" type="submit"></button>
-        <button class="btn ghost swap" type="button"></button>
+        <button class="btn ghost sm swap" type="button"></button>
       </form>`;
       document.body.appendChild(d);
       const form = d.querySelector('form'), err = d.querySelector('.err'), go = d.querySelector('.go');
       const paint = () => {
-        d.querySelector('h2').textContent = m === 'up' ? 'Create your account' : 'Sign in';
+        d.querySelector('h2').textContent = m === 'up' ? 'Create your account' : 'Welcome back';
         go.textContent = m === 'up' ? 'Create account' : 'Sign in';
         d.querySelector('.swap').textContent = m === 'up' ? 'I already have an account' : 'Create an account instead';
         form.password.autocomplete = m === 'up' ? 'new-password' : 'current-password';
       };
       paint();
       d.querySelector('.swap').onclick = () => { m = m === 'up' ? 'in' : 'up'; err.textContent = ''; paint(); };
+      d.querySelector('[data-x]').onclick = () => d.close();
       d.addEventListener('close', () => d.remove());
       d.addEventListener('click', e => { if (e.target === d) d.close(); });
       form.addEventListener('submit', async e => {
@@ -66,7 +69,7 @@
     if (session) {
       const { error } = await sb.auth.getUser();
       if (!error) return session;
-      await sb.auth.signOut({ scope: 'local' }); // account was deleted, drop the old login
+      await sb.auth.signOut({ scope: 'local' });
     }
     return openAuth(mode);
   }
@@ -79,7 +82,6 @@
   }
   async function signOut() { await sb.auth.signOut(); location.href = 'index.html'; }
 
-  // Where should this signed-in person go?
   async function route() {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) return null;
@@ -91,7 +93,6 @@
     return null;
   }
 
-  // Ignore accidental double clicks and double submits (a second one within a moment is dropped).
   const seen = new WeakMap();
   const tooSoon = (el, ms) => { const n = Date.now(); if (n - (seen.get(el) || 0) < ms) return true; seen.set(el, n); return false; };
   document.addEventListener('submit', e => { if (tooSoon(e.target, 1000)) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);

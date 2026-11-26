@@ -1,36 +1,125 @@
-<!doctype html><html lang="en" data-theme="light"><head><title>DevChat</title><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@500&display=swap"><link rel="stylesheet" href="styles.css"></head><body>
-<header class="wrap bar"><span class="mark">DevChat</span>
-  <div class="row-gap"><button class="btn ghost sm" id="themeBtn" type="button">Theme</button><button class="btn ghost sm" id="outBtn" type="button">Sign out</button></div></header>
-<nav class="cnav" id="tabs"><button data-t="place" aria-current="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9a2 2 0 0 0 0 6v3h18v-3a2 2 0 0 1 0-6V6H3z"/></svg><span>My place</span></button><button data-t="chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Chat</span></button><button data-t="req"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/></svg><span>Requirements</span></button><button data-t="upd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span>Progress</span></button></nav>
-<main class="wrap client-main" id="root"><p class="muted">Loading</p></main>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script><script src="config.js"></script><script src="app.js"></script><script src="image-viewer.js"></script><script src="chat.js"></script><script src="files.js"></script><script src="client-tabs.js"></script>
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <title>DevChat — Client Portal</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@500;600&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="c-shell">
+  <aside class="c-rail">
+    <div class="c-rail-head">
+      <span class="brand"><span class="brand-ic">D</span><span id="wsName">DevChat</span></span>
+      <span class="badge on" id="wsBadge"><span class="dot"></span>Open</span>
+    </div>
+
+    <div class="c-banner" id="wsBanner" hidden></div>
+
+    <article class="card c-ticket" id="ticketBox">
+      <div class="c-ticket-top">
+        <div class="between">
+          <span class="xs muted mono">YOUR TICKET</span>
+          <span class="badge on" id="tState">Loading</span>
+        </div>
+        <div class="c-ticket-num" id="tNum">#---</div>
+      </div>
+      <div class="c-perf"></div>
+      <div class="c-ticket-bot">
+        <strong style="font-size:16px" id="tHead">Loading your spot...</strong>
+        <p class="xs muted" id="tDetail"></p>
+        <p class="xs sub" id="tStage"></p>
+      </div>
+    </article>
+
+    <div class="card c-live">
+      <span class="pulse" aria-hidden="true"></span>
+      <div>
+        <span class="xs" style="color:var(--accent);font-weight:600;letter-spacing:.03em">RIGHT NOW</span>
+        <p class="sm" id="liveNote" style="margin-top:3px">Waiting for the first update</p>
+      </div>
+    </div>
+
+    <div class="card c-prog">
+      <div class="between">
+        <span class="xs muted" style="font-weight:600">PROJECT PROGRESS</span>
+        <span class="xs mono sub" id="progTxt">0 / 0</span>
+      </div>
+      <div class="prog"><i id="progBar" style="width:0%"></i></div>
+    </div>
+
+    <div class="c-rail-foot">
+      <button class="btn ghost sm" id="themeBtn" type="button">Theme</button>
+      <button class="btn ghost sm" id="outBtn" type="button">Sign out</button>
+    </div>
+  </aside>
+
+  <section class="c-canvas">
+    <header class="c-topbar">
+      <nav class="c-tabs" id="tabs" aria-label="Client navigation">
+        <button data-t="chat" aria-current="true">Chat</button>
+        <button data-t="req">Requirements</button>
+        <button data-t="upd">Progress &amp; Preview</button>
+      </nav>
+    </header>
+    <main id="root"><p class="muted pad">Loading...</p></main>
+  </section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script src="image-viewer.js"></script>
+<script src="chat.js"></script>
+<script src="files.js"></script>
+<script src="client-tabs.js"></script>
 <script>
 const { sb, $, pad, esc, initTheme, toast, requireSession, signOut } = DC;
 const theme = initTheme('client');
 $('#themeBtn').onclick = () => theme.toggle();
 $('#outBtn').onclick = signOut;
 const STAGE = { queued: 'Queued', reviewing: 'Reviewing', in_progress: 'In progress', feedback: 'Needs your feedback', done: 'Done' };
-let me, uid, tab = 'place';
-async function load() {
-  const [st, w, c] = await Promise.all([
+let me, uid, tab = 'chat';
+
+async function loadRail() {
+  const [st, w, c, k] = await Promise.all([
     sb.rpc('my_queue_status', { p_client: me.id }),
     sb.from('workspaces').select('name,status,away_message,est_days_per_client').eq('id', me.workspace_id).single(),
-    sb.from('clients').select('stage').eq('id', me.id).single()
+    sb.from('clients').select('stage,status_note').eq('id', me.id).single(),
+    sb.from('checklist_items').select('done').eq('client_id', me.id).eq('visible_to_client', true)
   ]);
   if (st.error || !st.data || !st.data.length || w.error) { toast('Could not load your place in line.'); return; }
-  const s = st.data[0], ws = w.data, stage = c.data ? c.data.stage : 'queued';
+  const s = st.data[0], ws = w.data, cl = c.data || {}, stage = cl.stage || 'queued';
+  const K = k.data || [], done = K.filter(x => x.done).length, pct = K.length ? Math.round(done / K.length * 100) : 0;
+
+  $('#wsName').textContent = ws.name;
+  $('#wsBadge').innerHTML = '<span class="dot"></span>' + esc(ws.status[0].toUpperCase() + ws.status.slice(1));
+
+  const note = ws.status === 'paused' ? 'This developer is not taking new work right now.' : ws.status === 'away' ? (ws.away_message || 'The developer is away. They will reply when they are back.') : '';
+  const bn = $('#wsBanner'); bn.hidden = !note; bn.textContent = note;
+
   let head, detail = '';
-  if (s.state === 'waiting') { head = s.queue_position === 1 ? "You're next" : 'Position ' + s.queue_position + ' in line'; if (s.queue_position > 1) detail = 'About ' + (s.queue_position - 1) * ws.est_days_per_client + ' days until your turn.'; }
-  else if (s.state === 'active') head = 'Your project is in progress';
+  if (s.state === 'waiting') {
+    head = s.queue_position === 1 ? "You're next in line" : 'Position ' + s.queue_position + ' in line';
+    if (s.queue_position > 1) detail = 'About ' + (s.queue_position - 1) * ws.est_days_per_client + ' days until your turn.';
+  } else if (s.state === 'active') head = 'Your project is in progress';
   else if (s.state === 'done') head = 'Your project is done';
   else head = 'You left the queue';
-  const note = ws.status === 'paused' ? 'This developer is not taking new work right now.' : ws.status === 'away' ? (ws.away_message || 'The developer is away. They will reply when they are back.') : '';
-  $('#root').innerHTML = (note ? '<div class="banner small">' + esc(note) + '</div>' : '') +
-    '<article class="ticket"><div class="top"><span class="muted small">' + esc(ws.name) + '</span><div class="num">' + pad(s.ticket_no) + '</div></div><div class="perf"></div>' +
-    '<div class="bottom"><h2>' + esc(head) + '</h2>' + (detail ? '<p class="sub small">' + esc(detail) + '</p>' : '') +
-    '<p class="pill"><i></i>' + esc(STAGE[stage] || stage) + '</p></div></article>';
+
+  $('#tState').textContent = s.state === 'active' ? 'Active' : s.state === 'done' ? 'Done' : 'Queued';
+  $('#tNum').textContent = pad(s.ticket_no);
+  $('#tHead').textContent = head;
+  $('#tDetail').textContent = detail;
+  $('#tDetail').hidden = !detail;
+  $('#tStage').textContent = 'Stage: ' + (STAGE[stage] || stage);
+  $('#liveNote').textContent = cl.status_note || 'Waiting for the first update';
+  $('#progTxt').textContent = K.length ? done + ' / ' + K.length : '0 / 0';
+  $('#progBar').style.width = pct + '%';
 }
-// Dot on the Chat tab when the developer or Elara writes while you are on another tab.
+
 function initDot() {
   const btn = document.querySelector('#tabs [data-t="chat"]'), key = 'devchat-seen-client-' + me.id;
   const dot = document.createElement('i'); dot.className = 'nd'; dot.hidden = true; dot.setAttribute('role', 'img'); dot.setAttribute('aria-label', 'New messages'); btn.appendChild(dot);
@@ -38,15 +127,33 @@ function initDot() {
   const mark = () => { try { localStorage.setItem(key, new Date().toISOString()); } catch (e) {} dot.hidden = true; };
   window.clearChatDot = mark;
   if (seen() === null) mark();
-  sb.from('messages').select('created_at').eq('client_id', me.id).neq('sender_kind', 'client').order('created_at', { ascending: false }).limit(1).then(({ data }) => { if (data && data[0] && new Date(data[0].created_at) > new Date(seen())) dot.hidden = tab === 'chat'; });
-  sb.channel('cdot-' + me.id).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: 'client_id=eq.' + me.id }, p => { if (p.new.sender_kind === 'client') return; if (tab === 'chat') mark(); else dot.hidden = false; }).subscribe();
+  sb.from('messages').select('created_at').eq('client_id', me.id).neq('sender_kind', 'client').order('created_at', { ascending: false }).limit(1).then(({ data }) => {
+    if (data && data[0] && new Date(data[0].created_at) > new Date(seen())) dot.hidden = tab === 'chat';
+  });
+  sb.channel('cdot-' + me.id).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: 'client_id=eq.' + me.id }, p => {
+    if (p.new.sender_kind === 'client') return;
+    if (tab === 'chat') mark(); else dot.hidden = false;
+  }).subscribe();
 }
+
 (async () => {
   const s = await requireSession(); if (!s) return;
   const { data } = await sb.from('clients').select('id,workspace_id').eq('user_id', s.user.id).limit(1);
   if (!data || !data.length) { location.href = 'index.html#join'; return; }
-  me = data[0]; uid = s.user.id; await load(); initDot();
-  setInterval(() => { if (tab === 'place') load(); }, 30000);
-  document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => { tab = b.dataset.t; if (tab === 'chat' && window.clearChatDot) window.clearChatDot(); document.querySelectorAll('#tabs button').forEach(x => x.setAttribute('aria-current', x === b)); tab === 'place' ? load() : ClientTabs.show(tab, $('#root'), me, uid); });
+  me = data[0]; uid = s.user.id;
+  await loadRail();
+  initDot();
+  ClientTabs.show('chat', $('#root'), me, uid);
+  sb.channel('crail-' + me.id).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'clients', filter: 'id=eq.' + me.id }, () => loadRail()).subscribe();
+  setInterval(loadRail, 25000);
+
+  document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
+    tab = b.dataset.t;
+    if (tab === 'chat' && window.clearChatDot) window.clearChatDot();
+    document.querySelectorAll('#tabs button').forEach(x => x.setAttribute('aria-current', x === b));
+    ClientTabs.show(tab, $('#root'), me, uid);
+  });
 })();
-</script></body></html>
+</script>
+</body>
+</html>

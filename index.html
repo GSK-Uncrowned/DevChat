@@ -1,26 +1,64 @@
-<!doctype html><html lang="en" data-theme="light"><head><title>DevChat</title><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@500&display=swap"><link rel="stylesheet" href="styles.css"></head><body>
-<header class="wrap bar"><span class="mark">DevChat</span>
-  <div class="row-gap"><button class="btn ghost" id="themeBtn" type="button">Theme</button><button class="btn" id="signinBtn" type="button">Sign in</button></div></header>
-<main class="wrap">
-  <section class="hero">
-    <div>
-      <h1>Every client, in one line.</h1>
-      <p class="lead">DevChat gives freelance developers a queue, intake and chat in one place. Clients see their own number and nobody else's.</p>
-      <div class="row-gap"><button class="btn primary lg" id="devBtn" type="button">Start as a developer</button><a class="btn lg" href="#join">Join with a code</a></div>
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <title>DevChat — Private client queues</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@500;600&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="nav-wrap">
+  <div class="wrap pub-nav">
+    <a class="brand" href="index.html"><span class="brand-ic">D</span>DevChat</a>
+    <div class="row">
+      <button class="btn ghost sm" id="themeBtn" type="button">Theme</button>
+      <button class="btn sm" id="signinBtn" type="button">Sign in</button>
     </div>
-    <div>
-      <article class="ticket" aria-label="Sample ticket"><div class="top"><span class="muted small">Sample studio</span><div class="num">#003</div></div><div class="perf"></div>
-        <div class="bottom"><h2>Position 3 in line</h2><p class="sub small">About 14 days until your turn.</p><p class="pill"><i></i>Queued</p></div></article>
-      <p class="muted small" style="margin-top:12px">What your clients see.</p>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="pub-hero">
+    <span class="pill-tag"><i></i>Private queues &amp; client portals</span>
+    <h1>Your freelance queue, finally calm.</h1>
+    <p>Every client gets their own ticket number, wish-list intake, live build preview, and direct chat—with zero visibility into your other clients.</p>
+    <div class="hero-cta">
+      <button class="btn primary lg" id="devBtn" type="button">Start as a developer</button>
+      <a class="btn lg" href="#join">Join with a code</a>
     </div>
   </section>
-  <section id="join" class="panel join"><form class="stack" id="joinForm">
-    <div><h2>Join a queue</h2><p class="sub small" style="margin-top:4px">Enter the code your developer sent you.</p></div>
-    <label>Invite code<input id="code" class="code" required autocomplete="off" maxlength="20"></label>
-    <label>Your name<input id="name" required maxlength="80" autocomplete="name"></label>
-    <button class="btn primary lg" type="submit">Join the queue</button></form></section>
+
+  <section id="join" class="join-section">
+    <div class="pass">
+      <div class="pass-left">
+        <div>
+          <span class="pill-tag"><i></i>Client ticket pass</span>
+          <h2>Have an invite code?</h2>
+          <p class="sub sm" style="margin-top:8px">Enter the one-time code your developer sent you to claim your spot in line and open your portal.</p>
+        </div>
+        <div class="row" style="gap:14px">
+          <span class="mono" style="font-size:28px;font-weight:600;color:var(--accent)">#004</span>
+          <span class="xs muted">Instant access &middot; Only you see your spot</span>
+        </div>
+      </div>
+
+      <div class="pass-perf" aria-hidden="true"></div>
+
+      <form class="pass-right" id="joinForm">
+        <label>Invite code<input id="code" class="code-in" required autocomplete="off" maxlength="20" placeholder="A9F4K2M8"></label>
+        <label>Your name<input id="name" required maxlength="80" autocomplete="name" placeholder="How your developer knows you"></label>
+        <button class="btn primary lg" type="submit">Join the queue</button>
+      </form>
+    </div>
+  </section>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script><script src="config.js"></script><script src="app.js"></script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
 <script>
 const { sb, $, toast, initTheme, openAuth, ensureAuth, route } = DC;
 const theme = initTheme('client');
@@ -35,7 +73,12 @@ $('#signinBtn').onclick = async () => {
   const r = await route(); if (r) location.href = r; else toast('Join a queue with a code, or start as a developer.');
 };
 $('#devBtn').onclick = async () => { await ensureAuth('up'); location.href = 'dev.html'; };
-const MSG = { invalid_invite: 'That code is not valid or has expired.', workspace_paused: 'This developer is not taking new clients right now.', workspace_full: 'This queue is full.', owner_cannot_join: 'You own this workspace, so you cannot join it as a client.' };
+const MSG = {
+  invalid_invite: 'That code is not valid or has expired.',
+  workspace_paused: 'This developer is not taking new clients right now.',
+  workspace_full: 'This queue is full.',
+  owner_cannot_join: 'You own this workspace, so you cannot join it as a client.'
+};
 $('#joinForm').addEventListener('submit', async e => {
   e.preventDefault();
   const code = $('#code').value.trim(), name = $('#name').value.trim();
@@ -49,4 +92,6 @@ $('#joinForm').addEventListener('submit', async e => {
   }
   location.href = 'client.html';
 });
-</script></body></html>
+</script>
+</body>
+</html>
