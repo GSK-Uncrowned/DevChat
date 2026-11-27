@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@500;600&display=swap">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="onboarding.css">
 </head>
 <body>
 <div class="c-shell">
@@ -75,6 +76,7 @@
 <script src="image-viewer.js"></script>
 <script src="chat.js"></script>
 <script src="files.js"></script>
+<script src="onboarding.js"></script>
 <script src="client-tabs.js"></script>
 <script>
 const { sb, $, pad, esc, initTheme, toast, requireSession, signOut } = DC;
@@ -138,12 +140,24 @@ function initDot() {
 
 (async () => {
   const s = await requireSession(); if (!s) return;
-  const { data } = await sb.from('clients').select('id,workspace_id').eq('user_id', s.user.id).limit(1);
+  const { data, error } = await sb.from('clients').select('id,workspace_id,onboarding_completed_at').eq('user_id', s.user.id).limit(1);
+  if (error) { $('#root').innerHTML = '<div class="card pad"><h2>Could not load your portal</h2><p class="sub sm">' + esc(error.message) + '</p></div>'; return; }
   if (!data || !data.length) { location.href = 'index.html#join'; return; }
   me = data[0]; uid = s.user.id;
   await loadRail();
   initDot();
-  ClientTabs.show('chat', $('#root'), me, uid);
+  if (!me.onboarding_completed_at) {
+    const topbar = document.querySelector('.c-topbar');
+    topbar.hidden = true;
+    await ClientOnboarding.mount($('#root'), me, async () => {
+      topbar.hidden = false;
+      me.onboarding_completed_at = new Date().toISOString();
+      await loadRail();
+      ClientTabs.show('chat', $('#root'), me, uid);
+    });
+  } else {
+    ClientTabs.show('chat', $('#root'), me, uid);
+  }
   sb.channel('crail-' + me.id).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'clients', filter: 'id=eq.' + me.id }, () => loadRail()).subscribe();
   setInterval(loadRail, 25000);
 

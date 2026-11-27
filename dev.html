@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@500;600&display=swap">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="onboarding.css">
 </head>
 <body>
 <div id="app"></div>
@@ -58,15 +59,21 @@ async function boot() {
 async function seedStyles() {
   const { count } = await sb.from('style_cards').select('id', { count: 'exact', head: true }).eq('workspace_id', ws.id);
   if (count) return;
-  const P = [
-    ['Minimal mono', '#ffffff,#111111,#8a8a8a'],
-    ['Soft floral', '#fdf2f4,#e8a0b4,#4a6b4f'],
-    ['Dark tech', '#0b0d14,#4cc38a,#eef0f5'],
-    ['Playful bright', '#fff3d6,#ff6b4a,#2b59ff'],
-    ['Warm editorial', '#f7f4ee,#9a5b00,#1f1b16'],
-    ['Bold contrast', '#000000,#ffffff,#f0b24a']
+  const S = [
+    ['Swiss Architectural', 'Ultra-clean architectural whitespace with a floating gallery card and sharp black-and-white structure.', ['#FFFFFF','#ECECE9','#111111','#8A8A8E']],
+    ['Dark Tech Product', 'Dramatic studio spotlight, floating hardware display, and glowing mint product highlights.', ['#0B0D14','#161B26','#34D399','#EEF0F5']],
+    ['Warm Craft & Story', 'Rich, cozy atmosphere with classic serif headlines—ideal for coffee brands, makers, and studios.', ['#241811','#120C08','#C87D55','#F5EFE6']],
+    ['Acid Agency Poster', 'High-energy poster typography with playful tape corners and sticker badges that stand out.', ['#06210C','#A3FF12','#F5F2E8','#111111']],
+    ['Cosmic AI Platform', 'Luminous violet gradients, floating 3D geometric prism, and modern metric badges.', ['#090514','#261447','#A855F7','#FFFFFF']],
+    ['Monochrome Editorial', 'Timeless black-and-white gallery feel designed for creators, consultants, and personal brands.', ['#09090B','#27272A','#F4F4F5','#9CA3AF']],
+    ['Industrial Grid V.01', 'Structured Swiss brutalist grid with oversized index numbers and crisp monospace details.', ['#76756D','#161614','#E4E2DA','#111111']],
+    ['Sticker Pop Studio', 'Bright dotted canvas with neo-brutalist outlines, tilted color stickers, and playful energy.', ['#F4F6FB','#1D4ED8','#FF4D2E','#0F172A']],
+    ['Kinetic Split Gallery', 'Asymmetrical split-screen layout with a vertical project rail and dramatic focal stage.', ['#F4F3EE','#111111','#DC2626','#991B1B']],
+    ['Soft Botanical Store', 'Gentle blush and sage boutique storefront with arched imagery and clean shopping badges.', ['#FDF4F5','#E8A5B5','#486856','#2B2124']],
+    ['Bento Dashboard SaaS', 'Precision dark grid with live Bento UI widgets, mini sparkline charts, and product polish.', ['#0B0E14','#151A24','#38BDF8','#F4F4F5']],
+    ['Luxury Travertine', 'Warm stone and gold hairline framing crafted for hospitality, real estate, and boutique brands.', ['#F6F1E7','#1F1B16','#B68A45','#D9CFC0']]
   ];
-  await sb.from('style_cards').insert(P.map(([title, p]) => ({ workspace_id: ws.id, title, palette: p.split(',') })));
+  await sb.from('style_cards').insert(S.map(([title, description, palette]) => ({ workspace_id: ws.id, title, description, palette })));
 }
 
 function showCreate(u) {

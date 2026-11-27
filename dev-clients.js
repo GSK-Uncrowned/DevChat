@@ -75,7 +75,7 @@ window.DevClients = (function () {
         '<div class="row" style="gap:12px"><button class="btn sm" id="clBack">&larr; Back</button><h1>' + esc(cl.display_name) + '</h1><span class="mono sm muted">' + pad(q.data ? q.data.ticket_no : 0) + '</span></div>' +
         '<div class="row"><select id="hd-st" class="compact" aria-label="Client stage">' + ST.map(([v, l]) => '<option value="' + v + '"' + (v === cl.stage ? ' selected' : '') + '>' + l + '</option>').join('') + '</select><button class="btn sm" id="clMsg">Open in Messages</button></div>' +
       '</div>' +
-      '<nav class="utabs" id="clTabs">' + ['Overview', 'Requirements', 'Checklist', 'Notes', 'Preview'].map(t => '<button data-ct="' + t + '"' + (curTab === t ? ' aria-current="true"' : '') + '>' + t + '</button>').join('') + '</nav>' +
+      '<nav class="utabs" id="clTabs">' + ['Overview', 'Project Brief', 'Requirements', 'Checklist', 'Notes', 'Preview'].map(t => '<button data-ct="' + t + '"' + (curTab === t ? ' aria-current="true"' : '') + '>' + t + '</button>').join('') + '</nav>' +
       '<div id="tb"></div>';
 
     main.querySelector('#clBack').onclick = () => onBack && onBack();
@@ -98,7 +98,7 @@ window.DevClients = (function () {
         sb.from('messages').select('sender_kind,body,created_at').eq('client_id', c.id).order('created_at', { ascending: false }).limit(200),
         sb.from('checklist_items').select('done').eq('client_id', c.id),
         sb.from('requirements').select('id', { count: 'exact', head: true }).eq('client_id', c.id),
-        sb.from('style_picks').select('style_card_id,kind').eq('client_id', c.id),
+        sb.from('style_picks').select('style_card_id,kind,note').eq('client_id', c.id),
         sb.from('style_cards').select('id,title,palette').eq('workspace_id', ws.id),
         sb.from('notes').select('id', { count: 'exact', head: true }).eq('client_id', c.id),
         sb.from('queue_entries').select('ticket_no').eq('client_id', c.id).maybeSingle(),
@@ -124,15 +124,71 @@ window.DevClients = (function () {
         '</div>';
     },
 
+    async Brief(tb, c) {
+      const [b, p, s, r] = await Promise.all([
+        sb.from('client_briefs').select('*').eq('client_id', c.id).maybeSingle(),
+        sb.from('style_picks').select('style_card_id,kind,note').eq('client_id', c.id),
+        sb.from('style_cards').select('id,title,description,palette').eq('workspace_id', ws.id),
+        sb.from('requirements').select('body').eq('client_id', c.id).order('created_at')
+      ]);
+      if (b.error) return tb.innerHTML = '<div class="card pad"><h2>Could not load project brief</h2><p class="sub sm">' + esc(b.error.message) + '</p></div>';
+      if (!b.data) return tb.innerHTML = '<div class="card empty"><h2>No project brief yet</h2><p class="sub sm">This client has not completed the new-client setup wizard.</p></div>';
+
+      const data = b.data, colors = Array.isArray(data.palette_colors) ? data.palette_colors : [];
+      const cards = {}; (s.data || []).forEach(x => cards[x.id] = x);
+      const picked = (p.data || []).map(x => ({ ...cards[x.style_card_id], kind: x.kind, note: x.note })).filter(x => x.title);
+      const requirements = (r.data || []).map(x => x.body);
+      const typeLabels = { landing_page: 'One-page site', business_site: 'Business website', portfolio: 'Portfolio / Personal site', ecommerce: 'Online store' };
+      let targetStack = 'spec';
+      const stackLabel = () => ({ nextjs: 'Next.js (App Router) + TypeScript + Tailwind CSS', react: 'React + Vite + Tailwind CSS', vanilla: 'Semantic HTML5, modern CSS, and vanilla JavaScript', spec: 'Platform-agnostic UI/UX and implementation specification' }[targetStack]);
+      const buildPrompt = () => {
+        const palette = colors.map((h, i) => `Color ${i + 1}: ${h}`).join('\n');
+        const styleRefs = picked.length ? picked.map(x => `- ${x.title} (${x.kind}) — ${x.description || 'Client-selected visual reference.'}${x.note ? `\n  Client note: "${x.note}"` : ''}`).join('\n') : '- No specific style reference selected; establish a coherent direction from the palette and brief.';
+        const features = requirements.length ? requirements.map((x, i) => `${i + 1}. ${x}`).join('\n') : 'No specific sections were selected.';
+        return `You are a senior product designer and frontend engineer. Create a production-ready website from this client brief.\n\n## 1. PROJECT SUMMARY\n- Client: ${c.display_name}\n- Website type: ${typeLabels[data.project_type] || data.project_type}\n- Primary goal: ${data.goal}\n- Target launch: ${data.timeline || 'Not specified'}\n- Business context: ${data.extra_notes || 'No additional context supplied.'}\n\n## 2. TECHNICAL DIRECTION\n- Stack: ${stackLabel()}\n- Build responsive, accessible layouts with a clear information hierarchy.\n- Use realistic copy tailored to the client's business and audience.\n- Implement every selected feature; do not invent unsupported business details.\n\n## 3. DESIGN SYSTEM\n- Palette direction: ${data.palette_name}\n${palette}\n- Treat the colors as design guidance, not mandatory literal usage in every component.\n\n## 4. CLIENT-SELECTED STYLE REFERENCES\n${styleRefs}\n\n## 5. REQUIRED SECTIONS AND FEATURES\n${features}\n\n## 6. QUALITY REQUIREMENTS\n- Mobile-first responsive behavior.\n- Semantic HTML and accessible controls.\n- Consistent spacing, typography, and reusable components.\n- Handle loading, empty, and error states where applicable.\n- Do not add features, prices, testimonials, or claims that the client did not provide.`;
+      };
+      const draw = () => {
+        const prompt = buildPrompt();
+        tb.innerHTML =
+          '<div class="stack">' +
+            '<div class="between" style="flex-wrap:wrap"><div><div class="row"><span class="badge on">CLIENT SUBMISSION</span><span class="mono xs muted">' + esc(typeLabels[data.project_type] || data.project_type) + '</span></div><h2 style="margin-top:5px">' + esc(c.display_name) + ' — Project brief</h2></div><button class="btn primary sm" id="copyBrief">Copy AI build prompt</button></div>' +
+            '<div class="dev-grid">' +
+              '<div class="card pad stack"><h3>Project summary</h3><div class="brief-grid">' +
+                '<div class="brief-cell"><span class="xs muted">Primary goal</span><strong>' + esc(data.goal) + '</strong></div>' +
+                '<div class="brief-cell"><span class="xs muted">Target launch</span><strong>' + esc(data.timeline || 'Not specified') + '</strong></div>' +
+                '<div class="brief-cell"><span class="xs muted">Color direction</span><strong>' + esc(data.palette_name) + '</strong></div>' +
+                '<div class="brief-cell"><span class="xs muted">Requested features</span><strong>' + requirements.length + ' items</strong></div>' +
+              '</div>' +
+              '<div class="row" style="flex-wrap:wrap">' + colors.map(h => '<span class="hex-chip"><i style="background:' + esc(h) + '"></i><span class="mono xs">' + esc(h) + '</span></span>').join('') + '</div>' +
+              (data.extra_notes ? '<div><span class="xs muted">Business / project notes</span><p class="sm" style="white-space:pre-wrap;margin-top:4px">' + esc(data.extra_notes) + '</p></div>' : '<p class="xs muted">No additional business notes.</p>') +
+              '</div>' +
+              '<div class="card pad stack"><div class="between"><h3>Style references</h3><span class="badge">' + picked.length + ' selected</span></div>' +
+                (picked.length ? picked.map(x => '<div class="stack-sm"><div class="sw big">' + (x.palette || []).map(h => '<i style="background:' + esc(h) + '"></i>').join('') + '</div><div class="between"><strong class="sm">' + esc(x.title) + '</strong><span class="badge' + (x.kind === 'favorite' ? ' on' : '') + '">' + esc(x.kind) + '</span></div>' + (x.note ? '<p class="xs sub">“' + esc(x.note) + '”</p>' : '') + '</div>').join('') : '<p class="sub sm">No styles selected.</p>') +
+              '</div>' +
+            '</div>' +
+            '<div class="card pad stack"><div class="between" style="flex-wrap:wrap"><div><span class="badge on">AI BUILD PROMPT</span><h3 style="margin-top:6px">Developer-ready instructions</h3></div><div class="row"><select class="compact" id="briefStack"><option value="spec">Platform-agnostic spec</option><option value="nextjs">Next.js + Tailwind</option><option value="react">React + Vite</option><option value="vanilla">HTML / CSS / JS</option></select><button class="btn primary sm" id="copyBriefBottom">Copy prompt</button></div></div><pre class="prompt-box">' + esc(prompt) + '</pre></div>' +
+          '</div>';
+        tb.querySelector('#briefStack').value = targetStack;
+        tb.querySelector('#briefStack').onchange = e => { targetStack = e.target.value; draw(); };
+        const copy = async () => {
+          try { await navigator.clipboard.writeText(prompt); toast('AI build prompt copied.'); }
+          catch (e) { toast('Clipboard access was blocked by the browser.'); }
+        };
+        tb.querySelector('#copyBrief').onclick = copy;
+        tb.querySelector('#copyBriefBottom').onclick = copy;
+      };
+      draw();
+    },
+
     async Requirements(tb, c) {
-      const [r, p, s] = await Promise.all([sb.from('requirements').select('body').eq('client_id', c.id).order('position'), sb.from('style_picks').select('style_card_id,kind').eq('client_id', c.id), sb.from('style_cards').select('id,title,palette').eq('workspace_id', ws.id)]);
+      const [r, p, s] = await Promise.all([sb.from('requirements').select('body').eq('client_id', c.id).order('position'), sb.from('style_picks').select('style_card_id,kind,note').eq('client_id', c.id), sb.from('style_cards').select('id,title,palette').eq('workspace_id', ws.id)]);
       const cd = {}; (s.data || []).forEach(x => cd[x.id] = x);
       const R = r.data || [], P = (p.data || []).filter(x => cd[x.style_card_id]);
       tb.innerHTML =
         '<div class="sh" style="margin-top:0"><h2>Wish list</h2><span class="badge">' + R.length + '</span></div>' +
         '<div class="wl">' + (R.map((x, i) => '<div class="wi" style="grid-template-columns:32px 1fr"><span class="wn">' + String(i + 1).padStart(2, '0') + '</span><span>' + esc(x.body) + '</span></div>').join('') || '<div class="card empty"><p class="sub">The client has not added anything yet.</p></div>') + '</div>' +
         '<div class="sh"><h2>Style picks</h2><span class="badge">' + P.length + '</span></div>' +
-        '<div class="cards">' + (P.map(x => { const k = cd[x.style_card_id]; return '<div class="scard"><div class="sw big">' + (k.palette || []).map(h => '<i style="background:' + esc(h) + '"></i>').join('') + '</div><div class="between"><strong>' + esc(k.title) + '</strong><span class="badge' + (x.kind === 'favorite' ? ' on' : '') + '">' + x.kind + '</span></div></div>'; }).join('') || '<div class="card empty" style="grid-column:1/-1"><p class="sub">No style picks yet.</p></div>') + '</div>';
+        '<div class="cards">' + (P.map(x => { const k = cd[x.style_card_id]; return '<div class="scard"><div class="sw big">' + (k.palette || []).map(h => '<i style="background:' + esc(h) + '"></i>').join('') + '</div><div class="between"><strong>' + esc(k.title) + '</strong><span class="badge' + (x.kind === 'favorite' ? ' on' : '') + '">' + x.kind + '</span></div>' + (x.note ? '<p class="xs sub">' + esc(x.note) + '</p>' : '') + '</div>'; }).join('') || '<div class="card empty" style="grid-column:1/-1"><p class="sub">No style picks yet.</p></div>') + '</div>';
     },
 
     async Notes(tb, c, uid) {
@@ -265,6 +321,7 @@ window.ElaraGlobal = (function () {
           '<div class="ai-foot">' +
             '<div class="elara-chips">' + PROMPTS.map(([l, p]) => '<button type="button" class="btn sm" data-ep="' + esc(p) + '">' + esc(l) + '</button>').join('') + '</div>' +
             '<div class="dump" id="egDump" hidden><div class="dump-h"><i class="rec"></i><strong>Listening</strong><span class="muted sm">Speak your command to Elara.</span></div><p class="dump-t" id="egDt"></p><div class="row" style="justify-content:flex-end"><button type="button" class="btn ghost sm" id="egCancel">Cancel</button><button type="button" class="btn primary sm" id="egDone">Run command</button></div></div>' +
+            '<label class="chk" style="margin:0 0 8px"><input type="checkbox" id="egAuto"> Auto-run: Elara carries out commands right away and reports back</label>' +
             '<form class="chat-in" id="egForm"><input name="q" placeholder="Command Elara across any client (e.g. Tell Robie...)" autocomplete="off" required><button type="button" class="btn mic" id="egMic" aria-pressed="false" title="Voice command"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="18" height="18"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button><button class="btn primary">Send</button></form>' +
           '</div>' +
         '</section>' +
@@ -306,12 +363,34 @@ window.ElaraGlobal = (function () {
       if (a.type === 'set_stage') {
         body = '<span class="sm">Move stage to <strong>' + esc(DevClients.lbl(a.stage)) + '</strong></span>';
         btnTxt = 'Update stage';
-      } else if (a.type === 'draft_message') {
-        body = '<textarea data-edm="' + id + '" style="min-height:68px">' + esc(a.body) + '</textarea>';
+      } else if (a.type === 'message_client' || a.type === 'draft_message') {
+        body = '<textarea data-edm="' + id + '" style="min-height:68px">' + esc(a.body) + '</textarea>' +
+          '<label class="xs muted row" style="gap:8px">Send as <select data-eas="' + id + '" style="width:auto"><option value="ai">Elara</option><option value="me">Me</option></select></label>';
         btnTxt = 'Send message';
       } else if (a.type === 'add_task') {
         body = '<span class="sm">Add task: <strong>' + esc(a.text) + '</strong></span>';
         btnTxt = 'Add task';
+      } else if (a.type === 'complete_task') {
+        body = '<span class="sm">Mark done: <strong>' + esc(a.task_text) + '</strong></span>';
+        btnTxt = 'Mark done';
+      } else if (a.type === 'update_status') {
+        body = '<span class="sm">Live status: <strong>' + esc(a.text) + '</strong> <span class="muted xs">(the client sees this)</span></span>';
+        btnTxt = 'Update status';
+      } else if (a.type === 'add_note') {
+        body = '<span class="sm">' + (a.shared ? 'Shared note' : 'Private note') + ': ' + esc(a.body) + '</span>';
+        btnTxt = 'Add note';
+      } else if (a.type === 'add_reminder') {
+        body = '<span class="sm">Pinned reminder: <strong>' + esc(a.body) + '</strong></span>';
+        btnTxt = 'Pin reminder';
+      } else if (a.type === 'delete_note') {
+        body = '<span class="sm">Delete note: <strong>' + esc(a.note_text) + '</strong></span>';
+        btnTxt = 'Delete note';
+      } else if (a.type === 'delete_task') {
+        body = '<span class="sm">Remove task: <strong>' + esc(a.task_text) + '</strong></span>';
+        btnTxt = 'Remove task';
+      } else if (a.type === 'set_status') {
+        body = '<span class="sm">Set your status to <strong>' + esc(a.status[0].toUpperCase() + a.status.slice(1)) + '</strong></span>';
+        btnTxt = 'Change status';
       }
       return '<div class="card pad stack-sm">' +
         '<div class="elara-act-head"><span class="elara-who"><span class="dot"></span>' + esc(a.client_name || 'Client') + ' <span class="mono xs muted">' + esc(a.ticket || '') + '</span></span><span class="badge">Action</span></div>' +
@@ -328,11 +407,58 @@ window.ElaraGlobal = (function () {
             const pending = (m.actions || []).filter((a, ai) => !(m.done && m.done[ai])).length;
             return '<div class="amsg">' +
               '<div class="msg ai"><div class="aihd">Elara</div><span>' + esc(m.content) + '</span></div>' +
-              ((m.actions || []).length ? '<div class="elara-ac-grid">' + m.actions.map((a, ai) => cardHtml(a, mi, ai, m.done && m.done[ai])).join('') + (pending > 1 ? '<div><button type="button" class="btn primary sm" data-eall="' + mi + '">Approve all (' + pending + ')</button></div>' : '') + '</div>' : '') +
+              ((m.trash && m.trash.length && !m.restored) ? '<div><button type="button" class="btn sm" data-undo="' + mi + '">Undo delete</button></div>' : '') +
+              (((m.actions || []).length && !m.auto) ? '<div class="elara-ac-grid">' + m.actions.map((a, ai) => cardHtml(a, mi, ai, m.done && m.done[ai])).join('') + (pending > 1 ? '<div><button type="button" class="btn primary sm" data-eall="' + mi + '">Approve all (' + pending + ')</button></div>' : '') + '</div>' : '') +
             '</div>';
           }).join('')
         : '<div class="chat-empty"><strong style="color:var(--text);display:block;margin-bottom:6px">Studio-wide command center</strong>Elara handles incoming client messages and briefs you above.<br><span class="xs muted">Command her across any client—e.g. "Tell Robie his project is under review and ask Sophia for her assets."</span></div>';
       box.scrollTop = box.scrollHeight;
+    }
+
+    // Undo for deletions: re-insert the saved copies (same ids, same content).
+    const UNDO_RE = /\b(undo|restore|undelete|bring (it|that|them|this) back|put (it|that|them|this) back)\b/i;
+    async function restoreTrash(m) {
+      const back = [], failed = [];
+      for (const t of (m.trash || [])) {
+        const { error } = await sb.from(t.table).insert(t.row);
+        if (error) failed.push(t.label + ' (' + error.message + ')'); else back.push(t.label);
+      }
+      if (!failed.length) m.restored = true; else m.trash = m.trash.filter(t => failed.some(f => f.startsWith(t.label)));
+      return (back.length ? 'Restored: ' + back.map(x => '\u201c' + x + '\u201d').join(', ') + '.' : '') + (failed.length ? ' I could not restore ' + failed.join(', ') + '.' : '');
+    }
+    // Autonomy: when on (default), Elara executes her actions immediately and reports what she did.
+    const AKEY = 'devchat-auto-' + ws.id;
+    const autoOn = () => { try { return localStorage.getItem(AKEY) !== '0'; } catch (e) { return true; } };
+    const pick = list => list[Math.floor(Math.random() * list.length)];
+    // Safety net: a command that would message many people at once still waits for approval.
+    const safeToAuto = acts => { const msgs = acts.filter(a => a.type === 'message_client' || a.type === 'draft_message'); return msgs.length <= 5 && new Set(msgs.map(a => a.client_id)).size <= 3; };
+    const doneLine = a => {
+      const n = (a.client_name || 'the client').split(' ')[0];
+      switch (a.type) {
+        case 'message_client': case 'draft_message': return pick(['Delivered to ' + n + '.', n + ' has your message.', 'Message sent to ' + n + '.']);
+        case 'set_stage': return n + ' is now in ' + DevClients.lbl(a.stage) + '.';
+        case 'update_status': return n + '\u2019s live status now reads \u201c' + a.text + '\u201d.';
+        case 'add_task': return 'Task added for ' + n + '.';
+        case 'complete_task': return 'Ticked off for ' + n + ': ' + a.task_text + '.';
+        case 'add_note': return 'Note saved on ' + n + '.';
+        case 'add_reminder': return pick(['Pinned to your reminders.', 'Reminder pinned for ' + n + '.']);
+        case 'delete_note': return 'Deleted the note \u201c' + a.note_text + '\u201d.';
+        case 'delete_task': return 'Removed the task \u201c' + a.task_text + '\u201d.';
+        case 'set_status': return 'You are now set to ' + a.status + '.';
+      }
+      return 'Done.';
+    };
+    async function runAuto(m) {
+      const lines = []; let ok = 0;
+      for (let ai = 0; ai < m.actions.length; ai++) {
+        const a = m.actions[ai];
+        const err = await execAction(a, null, m);
+        if (err) lines.push('I could not finish one for ' + ((a.client_name || 'the client').split(' ')[0]) + ': ' + (err.message || 'unknown error') + '.');
+        else { (m.done = m.done || {})[ai] = true; lines.push(doneLine(a)); ok++; }
+      }
+      m.auto = true; // done and reported, so no approval cards are shown
+      m.content = (ok ? pick(['Done, sir.', 'All taken care of.', 'Handled.']) : 'That did not go through.') + ' ' + lines.join(' ');
+      if (m.trash && m.trash.length) m.content += ' Say \u201cundo\u201d and I will bring it back.';
     }
 
     async function runPrompt(q) {
@@ -340,31 +466,65 @@ window.ElaraGlobal = (function () {
       if (!s) { s = { id: String(Date.now()), title: q.slice(0, 38), messages: [] }; sessions.unshift(s); curId = s.id; }
       s.messages.push({ role: 'user', content: q });
       save(); drawSessions(); drawMsgs();
+      if (UNDO_RE.test(q)) { // "undo" / "bring it back" restores the most recent deletion without asking the AI
+        const tm = [...s.messages].reverse().find(x => x.trash && x.trash.length && !x.restored);
+        if (tm) { const r = await restoreTrash(tm); s.messages.push({ role: 'assistant', content: r, actions: [], done: {} }); save(); drawMsgs(); return; }
+      }
       box.insertAdjacentHTML('beforeend', '<div class="msg ai typing"><div class="aihd">Elara</div><span class="shim">Coordinating across workspace&hellip;</span></div>');
       box.scrollTop = box.scrollHeight;
 
-      let out = null;
+      let out = null, fromAI = false, why = '';
       try {
-        const { data, error } = await sb.functions.invoke('elara', { body: { workspace_id: ws.id, messages: s.messages.map(m => ({ role: m.role, content: m.content })), clients } });
-        if (!error && data && !data.error) out = data;
-      } catch (e) {}
-      if (!out) out = localParse(q, clients);
+        const { data, error } = await sb.functions.invoke('elara', { body: { workspace_id: ws.id, messages: s.messages.map(m => ({ role: m.role, content: m.content })), clients, auto: autoOn() } });
+        if (!error && data && !data.error) { out = data; fromAI = true; }
+        else if (error) { try { const b = await error.context.json(); why = b.error || ''; } catch (e) { why = error.message || 'request failed'; } }
+        else why = (data && data.error) || 'empty reply';
+      } catch (e) { why = (e && e.message) || 'request failed'; }
+      if (!out) {
+        out = localParse(q, clients);
+        // Say why the real AI did not answer, instead of silently showing the basic fallback.
+        if (why) out.reply = 'My AI brain did not answer (' + String(why).slice(0, 180) + '). Basic mode: ' + out.reply;
+      }
 
-      s.messages.push({ role: 'assistant', content: out.reply || '', actions: out.actions || [], done: {} });
+      const am = { role: 'assistant', content: out.reply || '', actions: out.actions || [], done: {} };
+      if (fromAI && autoOn() && am.actions.length) {
+        if (safeToAuto(am.actions)) { const t = box.querySelector('.typing .shim'); if (t) t.textContent = 'Carrying that out\u2026'; await runAuto(am); }
+        else am.content += ' That involves a lot of outgoing messages, so I held everything for your approval.';
+      }
+      s.messages.push(am);
       save(); drawMsgs();
     }
 
-    async function execAction(a, id) {
+    async function execAction(a, id, m) {
+      if (a.type === 'set_status') {
+        const { error } = await sb.from('workspaces').update({ status: a.status }).eq('id', ws.id);
+        if (!error) ws.status = a.status;
+        return error;
+      }
       if (!a.client_id) return { message: 'No matching client found.' };
+      if (a.type === 'delete_note' || a.type === 'delete_task') {
+        // Keep a full copy of the row first, so "undo" can put it back exactly as it was.
+        const table = a.type === 'delete_note' ? 'notes' : 'checklist_items', rid = a.type === 'delete_note' ? a.note_id : a.task_id;
+        const { data: row, error: e1 } = await sb.from(table).select('*').eq('id', rid).maybeSingle();
+        if (e1) return e1;
+        if (!row) return { message: 'That item no longer exists.' };
+        const { error } = await sb.from(table).delete().eq('id', rid);
+        if (!error && m) (m.trash = m.trash || []).push({ table, row, label: a.note_text || a.task_text || 'item' });
+        return error;
+      }
       if (a.type === 'set_stage') {
         const { error } = await sb.from('clients').update({ stage: a.stage }).eq('id', a.client_id);
         if (!error) DC.log(ws.id, a.client_id, 'stage_changed', { stage: a.stage }, true);
         return error;
       }
-      if (a.type === 'draft_message') {
-        const ta = main.querySelector('[data-edm="' + id + '"]');
+      if (a.type === 'message_client' || a.type === 'draft_message') {
+        const ta = main.querySelector('[data-edm="' + id + '"]'), sel = main.querySelector('[data-eas="' + id + '"]');
         const body = ((ta && ta.value) || a.body || '').trim();
         if (!body) return null;
+        if (!sel || sel.value !== 'me') { // delivered in the client's chat by Elara
+          const { data, error } = await sb.functions.invoke('elara', { body: { workspace_id: ws.id, exec: { type: 'send_as_elara', client_id: a.client_id, body } } });
+          return error || (data && data.error ? { message: 'Could not send as Elara. Try "Me" instead.' } : null);
+        }
         const { error } = await sb.from('messages').insert({ client_id: a.client_id, workspace_id: ws.id, sender_id: uid, sender_kind: 'developer', body });
         return error;
       }
@@ -372,9 +532,23 @@ window.ElaraGlobal = (function () {
         const { error } = await sb.from('checklist_items').insert({ client_id: a.client_id, workspace_id: ws.id, text: a.text });
         return error;
       }
+      if (a.type === 'complete_task') {
+        const { error } = await sb.from('checklist_items').update({ done: true }).eq('id', a.task_id).eq('client_id', a.client_id);
+        return error;
+      }
+      if (a.type === 'update_status') {
+        const { error } = await sb.from('clients').update({ status_note: a.text }).eq('id', a.client_id);
+        return error;
+      }
+      if (a.type === 'add_note' || a.type === 'add_reminder') {
+        const { error } = await sb.from('notes').insert({ client_id: a.client_id, workspace_id: ws.id, author_id: uid, body: a.body, visibility: a.type === 'add_note' && a.shared ? 'shared' : 'private', pinned: a.type === 'add_reminder' });
+        return error;
+      }
       return null;
     }
 
+    const autoBox = main.querySelector('#egAuto'); autoBox.checked = autoOn();
+    autoBox.onchange = () => { try { localStorage.setItem(AKEY, autoBox.checked ? '1' : '0'); } catch (e) {} toast(autoBox.checked ? 'Auto-run is on.' : 'Elara will ask for approval first.'); };
     main.querySelector('#egForm').onsubmit = e => {
       e.preventDefault(); const f = e.target, q = f.q.value.trim(); if (!q) return;
       f.q.value = ''; runPrompt(q);
@@ -417,11 +591,12 @@ window.ElaraGlobal = (function () {
       if (b.dataset.sid) { curId = b.dataset.sid; drawSessions(); drawMsgs(); return; }
       if (b.dataset.sdel) { sessions = sessions.filter(x => x.id !== b.dataset.sdel); if (curId === b.dataset.sdel) curId = sessions[0] ? sessions[0].id : null; save(); drawSessions(); drawMsgs(); return; }
       if (b.dataset.ep) return runPrompt(b.dataset.ep);
+      if (b.dataset.undo) { const s = getCur(), m = s.messages[+b.dataset.undo]; b.disabled = true; const r = await restoreTrash(m); save(); drawMsgs(); toast(r); return; }
       if (b.dataset.eall) {
         const s = getCur(), mi = +b.dataset.eall, m = s.messages[mi]; b.disabled = true; let n = 0;
         for (let ai = 0; ai < m.actions.length; ai++) {
           if (m.done && m.done[ai]) continue;
-          const err = await execAction(m.actions[ai], mi + ':' + ai);
+          const err = await execAction(m.actions[ai], mi + ':' + ai, m);
           if (err) { toast(err.message); break; }
           (m.done = m.done || {})[ai] = true; n++;
         }
@@ -431,7 +606,7 @@ window.ElaraGlobal = (function () {
       if (b.dataset.eact) {
         const s = getCur(), [mi, ai] = b.dataset.eact.split(':').map(Number), m = s.messages[mi], a = m.actions[ai];
         b.disabled = true;
-        const err = await execAction(a, b.dataset.eact);
+        const err = await execAction(a, b.dataset.eact, m);
         if (err) { b.disabled = false; return toast(err.message); }
         (m.done = m.done || {})[ai] = true; save(); drawMsgs(); toast('Done.');
       }
