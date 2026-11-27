@@ -118,3 +118,55 @@
 }
 
 .c-topbar[hidden] { display: none !important; }
+
+
+/* Layout containment fixes: prevent the onboarding wizard from widening its portal grid. */
+.c-canvas,
+#root {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+#root { overflow-x: clip; }
+.wiz-wrap { width: 100%; min-width: 0; }
+.wiz-shell,
+.wiz-sec,
+.wiz-sec-head,
+.slib-card,
+.slib-meta { min-width: 0; }
+
+.wiz-step {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.wiz-type-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); }
+.feat-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
+.slib-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr)); }
+.pal-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); }
+
+.slib-meta .between {
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.slib-meta .pick { min-width: 0; flex-wrap: wrap; }
+.slib-meta .btn { white-space: normal; }
+.wiz-sec-head > div { min-width: 0; }
+.add-bar { grid-template-columns: minmax(0, 1fr) auto; }
+
+@media (max-width: 560px) {
+  .wiz-wrap { gap: 13px; padding: 6px 0 24px; }
+  .wiz-shell { padding: 10px; gap: 12px; }
+  .wiz-sec { padding: 11px; gap: 11px; }
+  .wiz-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .slib-grid,
+  .wiz-type-grid,
+  .feat-grid,
+  .pal-grid { grid-template-columns: minmax(0, 1fr); }
+  .add-bar { grid-template-columns: minmax(0, 1fr); }
+  .wiz-wrap > .between { flex-wrap: wrap; gap: 8px; }
+  .wiz-wrap > .between > span { order: -1; width: 100%; text-align: center; }
+}

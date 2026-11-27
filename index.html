@@ -16,6 +16,7 @@
     <div class="row">
       <button class="btn ghost sm" id="themeBtn" type="button">Theme</button>
       <button class="btn sm" id="signinBtn" type="button">Sign in</button>
+      <button class="btn primary sm" id="signupBtn" type="button">Sign up</button>
     </div>
   </div>
 </header>
@@ -71,6 +72,15 @@ sb.auth.getSession().then(({ data: { session } }) => {
 $('#signinBtn').onclick = async () => {
   await ensureAuth('in');
   const r = await route(); if (r) location.href = r; else toast('Join a queue with a code, or start as a developer.');
+};
+$('#signupBtn').onclick = async () => {
+  const { data: { session: currentSession } } = await sb.auth.getSession();
+  if (currentSession) {
+    const { error } = await sb.auth.signOut({ scope: 'local' });
+    if (error) { toast('Could not switch accounts: ' + error.message); return; }
+  }
+  const newSession = await openAuth('up');
+  if (newSession) location.href = 'dev.html';
 };
 $('#devBtn').onclick = async () => { await ensureAuth('up'); location.href = 'dev.html'; };
 const MSG = {
